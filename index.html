@@ -1,0 +1,67 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover,user-scalable=no">
+<meta name="theme-color" content="#7c5cff">
+<title>Color Pop! Kids Drawing</title>
+<style>
+:root{--ink:#302b4a;--purple:#7c5cff;--pink:#ff5fa2;--yellow:#ffd84d;--mint:#60dfb1;--sky:#5ec8ff;--panel:rgba(255,255,255,.92)}*{box-sizing:border-box}html,body{margin:0;min-height:100%;font-family:ui-rounded,"Comic Sans MS",system-ui,sans-serif;color:var(--ink);background:linear-gradient(135deg,#fff4ca,#f7dcff 52%,#d9f6ff);overscroll-behavior:none}button,input{font:inherit}button{border:0;cursor:pointer;touch-action:manipulation}.app{min-height:100dvh;display:grid;grid-template-rows:auto 1fr auto;gap:10px;padding:max(10px,env(safe-area-inset-top)) max(10px,env(safe-area-inset-right)) max(10px,env(safe-area-inset-bottom)) max(10px,env(safe-area-inset-left))}.topbar,.toolbar{background:var(--panel);border:3px solid #fff;border-radius:24px;box-shadow:0 10px 30px rgba(83,53,130,.15);display:flex;align-items:center;gap:8px;padding:9px;flex-wrap:wrap}.brand{font-weight:1000;font-size:clamp(20px,5vw,32px);margin-right:auto}.brand span{color:var(--pink)}.btn{min-width:46px;min-height:46px;border-radius:16px;background:#fff;color:var(--ink);box-shadow:0 5px 0 #dcd6ef;font-weight:900;padding:8px 12px}.btn:active{transform:translateY(3px);box-shadow:0 2px 0 #dcd6ef}.btn.active{background:var(--purple);color:#fff;box-shadow:0 5px 0 #5035ba}.btn.primary{background:var(--pink);color:#fff;box-shadow:0 5px 0 #c73672}.stage{min-height:0;display:grid;place-items:center;position:relative}.canvas-wrap{position:relative;width:min(100%,900px);height:100%;min-height:340px;max-height:calc(100dvh - 180px);border-radius:28px;overflow:hidden;background:#fff;box-shadow:0 18px 50px rgba(74,52,110,.2),inset 0 0 0 5px #fff}.canvas-wrap::before{content:"";position:absolute;inset:0;background-image:linear-gradient(#eee 1px,transparent 1px),linear-gradient(90deg,#eee 1px,transparent 1px);background-size:22px 22px;opacity:.25}canvas{position:absolute;inset:0;width:100%;height:100%;touch-action:none}.toolbar{justify-content:center}.palette{display:flex;gap:7px;overflow-x:auto;max-width:100%;padding:3px}.swatch{width:40px;height:40px;min-width:40px;border-radius:50%;border:4px solid #fff;box-shadow:0 3px 0 #cfc8e7}.swatch.active{outline:4px solid var(--ink);transform:scale(.92)}.size{display:flex;align-items:center;gap:6px;background:#fff;padding:5px 10px;border-radius:15px;font-weight:800}.size input{width:100px;accent-color:var(--purple)}#upload{display:none}.hint{position:absolute;top:14px;left:50%;transform:translateX(-50%);background:rgba(48,43,74,.82);color:#fff;padding:8px 14px;border-radius:99px;font-size:13px;font-weight:800;pointer-events:none;opacity:0;transition:.2s}.hint.show{opacity:1}.confetti{position:fixed;pointer-events:none;font-size:24px;animation:pop .9s ease-out forwards}@keyframes pop{to{transform:translate(var(--x),var(--y)) rotate(360deg);opacity:0}}@media(max-width:620px){.app{gap:7px;padding:7px}.topbar,.toolbar{border-radius:18px;padding:7px}.brand{width:100%;text-align:center;margin:0}.btn{min-height:43px;min-width:43px;padding:7px 9px}.canvas-wrap{border-radius:20px;max-height:none}.toolbar{justify-content:flex-start}.palette{order:3;width:100%}.size{margin-left:auto}}
+</style>
+</head>
+<body>
+<main class="app">
+<header class="topbar">
+<div class="brand">🎨 Color <span>Pop!</span></div>
+<button class="btn active" id="brush" aria-label="Brush">🖌️ Brush</button>
+<button class="btn" id="fill" aria-label="Fill">🪣 Fill</button>
+<button class="btn" id="eraser" aria-label="Eraser">🧽</button>
+<button class="btn" id="undo" aria-label="Undo">↩️</button>
+<button class="btn" id="redo" aria-label="Redo">↪️</button>
+</header>
+<section class="stage">
+<div class="canvas-wrap" id="wrap"><canvas id="canvas"></canvas><div class="hint" id="hint">Draw with your finger!</div></div>
+</section>
+<footer class="toolbar">
+<label class="btn" for="upload">📷 Upload</label><input id="upload" type="file" accept="image/png,image/jpeg,image/webp">
+<button class="btn" id="clear">✨ New</button>
+<button class="btn primary" id="save">💾 Save</button>
+<div class="size">Small <input id="size" type="range" min="2" max="40" value="12"> Big</div>
+<div class="palette" id="palette"></div>
+<input id="custom" type="color" value="#7c5cff" aria-label="Custom color">
+</footer>
+</main>
+<script>
+const canvas=document.querySelector('#canvas'),ctx=canvas.getContext('2d',{willReadFrequently:true}),wrap=document.querySelector('#wrap');
+const colors=['#ff4d6d','#ff9f1c','#ffd60a','#52b788','#00b4d8','#4361ee','#7b2cbf','#f15bb5','#5b3a29','#111827','#ffffff'];
+let color=colors[0],tool='brush',drawing=false,last=null,history=[],future=[],baseImage=null;
+const palette=document.querySelector('#palette');
+colors.forEach((c,i)=>{const b=document.createElement('button');b.className='swatch'+(i===0?' active':'');b.style.background=c;b.title=c;b.onclick=()=>selectColor(c,b);palette.append(b)});
+function selectColor(c,b){color=c;document.querySelectorAll('.swatch').forEach(x=>x.classList.remove('active'));if(b)b.classList.add('active');if(tool==='eraser')setTool('brush')}
+document.querySelector('#custom').oninput=e=>selectColor(e.target.value);
+function setTool(t){tool=t;['brush','fill','eraser'].forEach(id=>document.querySelector('#'+id).classList.toggle('active',id===t));showHint(t==='fill'?'Tap an area to fill!':t==='eraser'?'Rub it away!':'Draw with your finger!')}
+['brush','fill','eraser'].forEach(id=>document.querySelector('#'+id).onclick=()=>setTool(id));
+function resize(){const r=wrap.getBoundingClientRect(),old=document.createElement('canvas');old.width=canvas.width;old.height=canvas.height;old.getContext('2d').drawImage(canvas,0,0);canvas.width=Math.max(1,Math.round(r.width*devicePixelRatio));canvas.height=Math.max(1,Math.round(r.height*devicePixelRatio));ctx.setTransform(devicePixelRatio,0,0,devicePixelRatio,0,0);ctx.lineCap='round';ctx.lineJoin='round';ctx.fillStyle='#fff';ctx.fillRect(0,0,r.width,r.height);if(old.width)ctx.drawImage(old,0,0,old.width,old.height,0,0,r.width,r.height)}
+new ResizeObserver(resize).observe(wrap);
+function pos(e){const r=canvas.getBoundingClientRect();return{x:e.clientX-r.left,y:e.clientY-r.top}}
+function snapshot(){history.push(canvas.toDataURL());if(history.length>25)history.shift();future=[]}
+function restore(url){const img=new Image();img.onload=()=>{ctx.save();ctx.setTransform(1,0,0,1,0,0);ctx.clearRect(0,0,canvas.width,canvas.height);ctx.drawImage(img,0,0,canvas.width,canvas.height);ctx.restore()};img.src=url}
+canvas.addEventListener('pointerdown',e=>{e.preventDefault();canvas.setPointerCapture(e.pointerId);snapshot();const p=pos(e);if(tool==='fill'){floodFill(p.x,p.y,color);celebrate(e.clientX,e.clientY);return}drawing=true;last=p;dot(p)});
+canvas.addEventListener('pointermove',e=>{if(!drawing)return;const p=pos(e);stroke(last,p);last=p});
+['pointerup','pointercancel'].forEach(n=>canvas.addEventListener(n,()=>{drawing=false;last=null}));
+function setupStroke(){ctx.globalCompositeOperation=tool==='eraser'?'destination-out':'source-over';ctx.strokeStyle=color;ctx.fillStyle=color;ctx.lineWidth=+document.querySelector('#size').value}
+function dot(p){setupStroke();ctx.beginPath();ctx.arc(p.x,p.y,ctx.lineWidth/2,0,Math.PI*2);ctx.fill()}
+function stroke(a,b){setupStroke();ctx.beginPath();ctx.moveTo(a.x,a.y);ctx.lineTo(b.x,b.y);ctx.stroke()}
+function hexRgb(h){h=h.replace('#','');if(h.length===3)h=[...h].map(x=>x+x).join('');return[parseInt(h.slice(0,2),16),parseInt(h.slice(2,4),16),parseInt(h.slice(4,6),16),255]}
+function floodFill(x,y,hex){const scale=devicePixelRatio,sx=Math.floor(x*scale),sy=Math.floor(y*scale),w=canvas.width,h=canvas.height,img=ctx.getImageData(0,0,w,h),d=img.data,i=(sy*w+sx)*4,target=[d[i],d[i+1],d[i+2],d[i+3]],fill=hexRgb(hex);if(target.every((v,j)=>Math.abs(v-fill[j])<8))return;const tol=34,stack=[[sx,sy]],seen=new Uint8Array(w*h);while(stack.length){const [px,py]=stack.pop();if(px<0||py<0||px>=w||py>=h)continue;const n=py*w+px;if(seen[n])continue;seen[n]=1;const q=n*4;if(Math.abs(d[q]-target[0])>tol||Math.abs(d[q+1]-target[1])>tol||Math.abs(d[q+2]-target[2])>tol||Math.abs(d[q+3]-target[3])>tol)continue;d[q]=fill[0];d[q+1]=fill[1];d[q+2]=fill[2];d[q+3]=255;stack.push([px+1,py],[px-1,py],[px,py+1],[px,py-1])}ctx.putImageData(img,0,0)}
+document.querySelector('#undo').onclick=()=>{if(!history.length)return;future.push(canvas.toDataURL());restore(history.pop())};
+document.querySelector('#redo').onclick=()=>{if(!future.length)return;history.push(canvas.toDataURL());restore(future.pop())};
+document.querySelector('#clear').onclick=()=>{snapshot();ctx.save();ctx.setTransform(1,0,0,1,0,0);ctx.globalCompositeOperation='source-over';ctx.fillStyle='#fff';ctx.fillRect(0,0,canvas.width,canvas.height);ctx.restore();showHint('Fresh canvas!')};
+document.querySelector('#upload').onchange=e=>{const f=e.target.files[0];if(!f)return;const img=new Image();img.onload=()=>{snapshot();ctx.save();ctx.setTransform(1,0,0,1,0,0);ctx.fillStyle='#fff';ctx.fillRect(0,0,canvas.width,canvas.height);const s=Math.min(canvas.width/img.width,canvas.height/img.height),w=img.width*s,h=img.height*s;ctx.drawImage(img,(canvas.width-w)/2,(canvas.height-h)/2,w,h);ctx.restore();URL.revokeObjectURL(img.src);showHint('Ready to color!')};img.src=URL.createObjectURL(f)};
+document.querySelector('#save').onclick=()=>{const a=document.createElement('a');a.download='my-color-pop-art.png';a.href=canvas.toDataURL('image/png');a.click();celebrate(innerWidth/2,innerHeight/2)};
+function showHint(t){const h=document.querySelector('#hint');h.textContent=t;h.classList.add('show');clearTimeout(h._t);h._t=setTimeout(()=>h.classList.remove('show'),1300)}
+function celebrate(x,y){['⭐','✨','💖','🌈','🎉'].forEach((s,i)=>{const e=document.createElement('div');e.className='confetti';e.textContent=s;e.style.left=x+'px';e.style.top=y+'px';e.style.setProperty('--x',(Math.random()*180-90)+'px');e.style.setProperty('--y',(-40-Math.random()*120)+'px');document.body.append(e);setTimeout(()=>e.remove(),1000)})}
+setTimeout(()=>showHint('Draw with your finger!'),500);
+</script>
+</body>
+</html>
