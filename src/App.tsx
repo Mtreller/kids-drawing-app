@@ -20,6 +20,10 @@ const pawPatrolPages = [
   { title: 'Marshall', file: 'marshall-sitting-panting.webp' },
   { title: 'Chase', file: 'chase-standing-proudly.webp' },
 ].map((page) => ({ ...page, src: `${import.meta.env.BASE_URL}drawings/paw-patrol/${page.file}` }));
+const unicornPrincessPages = [
+  { title: 'Mermaid & Dolphin Friends', file: 'mermaid-dolphin-friends.webp' },
+  { title: 'Dreamy Unicorn', file: 'unicorn-hill.webp' },
+].map((page) => ({ ...page, src: `${import.meta.env.BASE_URL}drawings/unicorns-princesses/${page.file}` }));
 
 type DragColor = { color: string; x: number; y: number } | null;
 type Gesture = { distance: number; angle: number; width: number; height: number; rotation: number };
@@ -1126,6 +1130,14 @@ export function App() {
           <div className="category-heading"><span>🐾</span><div><h3>Paw Patrol</h3><p>Five adventures ready to color</p></div></div>
           <div className="drawing-grid">
             {pawPatrolPages.map((page) => <button key={page.file} type="button" className="drawing-card" onClick={() => loadLibraryPage(page.src, page.title)}>
+              <span className="drawing-card__preview"><img src={page.src} alt="" loading="lazy" /></span>
+              <strong>{page.title}</strong>
+              <small>Tap to color</small>
+            </button>)}
+          </div>
+          <div className="category-heading category-heading--magic"><span>🦄</span><div><h3>Unicorns &amp; Princesses</h3><p>Magical friends and underwater adventures</p></div></div>
+          <div className="drawing-grid drawing-grid--landscape">
+            {unicornPrincessPages.map((page) => <button key={page.file} type="button" className="drawing-card" onClick={() => loadLibraryPage(page.src, page.title)}>
               <span className="drawing-card__preview"><img src={page.src} alt="" loading="lazy" /></span>
               <strong>{page.title}</strong>
               <small>Tap to color</small>
