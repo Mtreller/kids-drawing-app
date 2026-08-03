@@ -57,7 +57,7 @@ button { border: 0; color: inherit; font: inherit; touch-action: manipulation; -
 
 .workspace { position: relative; min-height: 0; display: grid; grid-template-rows: auto minmax(0, 1fr); gap: 10px; padding: 10px 20px 78px; overflow: hidden; }
 .workspace-hud { z-index: 6; min-width: 0; display: flex; align-items: center; gap: 8px; }
-.canvas-stage { width: 100%; height: 100%; min-width: 0; min-height: 0; display: grid; place-items: center; touch-action: none; transform-origin: center; will-change: transform; }
+.canvas-stage { width: 100%; height: 100%; min-width: 0; min-height: 0; display: grid; place-items: center; touch-action: none; }
 .canvas-cluster { width: 100%; height: 100%; min-width: 0; min-height: 0; display: flex; align-items: center; justify-content: center; gap: clamp(10px, 1.5vw, 20px); }
 .canvas-wrap {
   --page-ratio: 1.333;
@@ -302,23 +302,22 @@ button { border: 0; color: inherit; font: inherit; touch-action: manipulation; -
 }
 
 @media (max-height: 600px) and (orientation: landscape) {
-  .app-shell { --bar-height: 50px; grid-template-rows: var(--bar-height) minmax(0, 1fr) 0; }
-  .topbar { padding: max(5px, env(safe-area-inset-top)) max(8px, env(safe-area-inset-right)) 5px max(8px, env(safe-area-inset-left)); }
+  .app-shell { --bar-height: 42px; grid-template-rows: var(--bar-height) minmax(0, 1fr) 0; }
+  .topbar { padding: max(4px, env(safe-area-inset-top)) max(6px, env(safe-area-inset-right)) 4px max(6px, env(safe-area-inset-left)); }
   .brand { gap: 0; }
   .brand > span:last-child { display: none; }
-  .brand__mark { width: 34px; height: 34px; border-radius: 11px; }
+  .brand__mark { width: 30px; height: 30px; border-radius: 10px; }
   .topbar__actions { gap: 4px; }
-  .topbar .icon-button, .topbar .gallery-button, .topbar .library-button { min-width: 38px; width: 38px; height: 38px; padding: 0; border-radius: 12px; font-size: 0; }
-  .topbar .icon-button > span, .topbar .gallery-button span, .topbar .library-button span { font-size: 19px; }
-  .workspace, .app-shell.is-focus .workspace, .app-shell.is-left-handed .workspace, .app-shell.is-left-handed.is-focus .workspace { gap: 4px; padding: 4px 142px 4px 108px; }
-  .workspace-hud { min-height: 32px; gap: 4px; overflow-x: auto; scrollbar-width: none; }
-  .workspace-hud::-webkit-scrollbar { display: none; }
-  .status-pill { min-width: 120px; flex-basis: 120px; padding: 6px 8px; font-size: 9px; }
-  .line-mode-badge { padding: 5px 7px; }
+  .topbar .icon-button, .topbar .gallery-button, .topbar .library-button { min-width: 34px; width: 34px; height: 34px; padding: 0; border-radius: 11px; font-size: 0; }
+  .topbar .icon-button > span, .topbar .gallery-button span, .topbar .library-button span { font-size: 18px; }
+  .workspace, .app-shell.is-focus .workspace, .app-shell.is-left-handed .workspace, .app-shell.is-left-handed.is-focus .workspace { grid-template-rows: minmax(0, 1fr); gap: 0; padding: 3px 142px 3px 108px; }
+  .workspace-hud { position: fixed; z-index: 8; top: 0; left: 0; width: 0; height: 0; min-height: 0; overflow: visible; }
+  .status-pill { position: fixed; top: 7px; left: max(108px, calc(env(safe-area-inset-left) + 108px)); width: 130px; min-width: 0; display: block; padding: 6px 8px; font-size: 8px; background: rgb(245 242 250 / 90%); }
+  .line-mode-badge { position: fixed; top: 6px; left: max(44px, calc(env(safe-area-inset-left) + 44px)); padding: 5px 7px; }
   .line-mode-badge span, .selection-toolbar > span { display: none; }
-  .selection-toolbar { padding-left: 5px; }
-  .view-controls { margin-left: auto; padding: 2px; }
-  .view-controls button { min-width: 29px; height: 28px; padding: 0 5px; }
+  .selection-toolbar { position: fixed; bottom: 6px; left: max(108px, calc(env(safe-area-inset-left) + 108px)); padding-left: 5px; }
+  .view-controls { position: fixed; top: 4px; left: 50%; margin: 0; padding: 2px; transform: translateX(-50%); pointer-events: auto; }
+  .view-controls button { min-width: 28px; height: 30px; padding: 0 5px; }
   .view-controls .rotation-reset { min-width: 34px; }
   .view-controls .zoom-reset { min-width: 47px; }
   .tool-dock, .app-shell.is-focus .tool-dock {
@@ -340,7 +339,7 @@ button { border: 0; color: inherit; font: inherit; touch-action: manipulation; -
   .side-controls {
     position: fixed;
     z-index: 6;
-    top: calc(50% + 25px);
+    top: calc(50% + 21px);
     left: max(56px, calc(env(safe-area-inset-left) + 56px));
     width: 48px;
     height: auto;
@@ -353,8 +352,8 @@ button { border: 0; color: inherit; font: inherit; touch-action: manipulation; -
   }
   .side-controls .control-icon { width: 28px; height: 28px; }
   .side-controls .control-value { width: 43px; padding: 5px 2px; font-size: 10px; }
-  .side-controls .vertical-range-wrap { height: clamp(76px, 25vh, 105px); }
-  .side-controls input[type="range"] { width: clamp(76px, 25vh, 105px); }
+  .side-controls .vertical-range-wrap { height: clamp(68px, 22vh, 92px); }
+  .side-controls input[type="range"] { width: clamp(68px, 22vh, 92px); }
   .side-controls .control-label { font-size: 7px; }
   .canvas-cluster, .app-shell.is-left-handed .canvas-cluster { flex-direction: row; gap: 0; }
   .canvas-cluster > .side-controls:not(.side-controls--right) { left: max(56px, calc(env(safe-area-inset-left) + 56px)); }
