@@ -25,6 +25,16 @@ const unicornPrincessPages = [
   { title: 'Mermaid & Dolphin Friends', file: 'mermaid-dolphin-friends.webp' },
   { title: 'Dreamy Unicorn', file: 'unicorn-hill.webp' },
 ].map((page) => ({ ...page, src: `${import.meta.env.BASE_URL}drawings/unicorns-princesses/${page.file}` }));
+const stitchPages = [
+  { title: 'Bubble Tea', file: 'bubble-tea.webp' },
+  { title: 'Hula Dance', file: 'hula-dance.webp' },
+  { title: 'Christmas Surprise', file: 'christmas-surprise.webp' },
+  { title: 'Sandcastle Fun', file: 'sandcastle-fun.webp' },
+  { title: 'Sleepy Stitch', file: 'sleepy-stitch.webp' },
+  { title: 'The Big Shoe', file: 'big-shoe.webp' },
+  { title: 'Curious Stitch', file: 'curious-stitch.webp' },
+  { title: 'Happy Stitch', file: 'happy-stitch.webp' },
+].map((page) => ({ ...page, src: `${import.meta.env.BASE_URL}drawings/stitch/${page.file}` }));
 
 type DragColor = { color: string; x: number; y: number } | null;
 type Gesture = { distance: number; angle: number; width: number; height: number; rotation: number };
@@ -1341,6 +1351,14 @@ export function App() {
           <div className="category-heading category-heading--magic"><span>🦄</span><div><h3>Unicorns &amp; Princesses</h3><p>Magical friends and underwater adventures</p></div></div>
           <div className="drawing-grid drawing-grid--landscape">
             {unicornPrincessPages.map((page) => <button key={page.file} type="button" className="drawing-card" onClick={() => loadLibraryPage(page.src, page.title)}>
+              <span className="drawing-card__preview"><img src={page.src} alt="" loading="lazy" /></span>
+              <strong>{page.title}</strong>
+              <small>Tap to color</small>
+            </button>)}
+          </div>
+          <div className="category-heading category-heading--stitch"><span>🌺</span><div><h3>Stitch</h3><p>Eight playful adventures ready to color</p></div></div>
+          <div className="drawing-grid drawing-grid--portrait">
+            {stitchPages.map((page) => <button key={page.file} type="button" className="drawing-card" onClick={() => loadLibraryPage(page.src, page.title)}>
               <span className="drawing-card__preview"><img src={page.src} alt="" loading="lazy" /></span>
               <strong>{page.title}</strong>
               <small>Tap to color</small>

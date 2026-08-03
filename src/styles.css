@@ -242,12 +242,15 @@ button { border: 0; color: inherit; font: inherit; touch-action: manipulation; -
 .category-heading { display: flex; align-items: center; gap: 13px; margin: 28px 0 15px; }
 .category-heading > span { display: grid; width: 48px; height: 48px; place-items: center; border-radius: 16px; font-size: 25px; background: #ffe9a8; }
 .category-heading--magic > span { background: linear-gradient(145deg, #f4d6ff, #d9dcff); }
+.category-heading--stitch > span { background: linear-gradient(145deg, #c7f1ff, #e3d8ff); }
 .category-heading h3 { font-size: 20px; }
 .category-heading p { margin-top: 2px; color: #7b7488; font-size: 12px; }
 .drawing-grid { display: grid; grid-template-columns: repeat(5, minmax(0, 1fr)); gap: 14px; }
 .drawing-grid--landscape { grid-template-columns: repeat(2, minmax(0, 1fr)); }
 .drawing-grid--landscape .drawing-card:first-child { grid-column: auto; }
 .drawing-grid--landscape .drawing-card__preview, .drawing-grid--landscape .drawing-card:first-child .drawing-card__preview { aspect-ratio: 16 / 10; }
+.drawing-grid--portrait .drawing-card:first-child { grid-column: auto; }
+.drawing-grid--portrait .drawing-card__preview, .drawing-grid--portrait .drawing-card:first-child .drawing-card__preview { aspect-ratio: 3 / 4; }
 .drawing-card { min-width: 0; display: grid; grid-template-rows: minmax(0, 1fr) auto auto; gap: 4px; padding: 9px 9px 12px; border: 1px solid #e4ddec; border-radius: 20px; text-align: left; background: white; box-shadow: 0 9px 24px rgb(61 45 87 / 8%); transition: transform .16s ease, box-shadow .16s ease; }
 .drawing-card:hover { transform: translateY(-4px); box-shadow: 0 15px 30px rgb(61 45 87 / 16%); }
 .drawing-card__preview { aspect-ratio: 3 / 4; display: grid; place-items: center; overflow: hidden; border-radius: 13px; background: #f1edf5; }
@@ -309,6 +312,8 @@ button { border: 0; color: inherit; font: inherit; touch-action: manipulation; -
   .drawing-grid--landscape { grid-template-columns: 1fr; }
   .drawing-grid--landscape .drawing-card:first-child { grid-column: auto; }
   .drawing-grid--landscape .drawing-card:first-child .drawing-card__preview { aspect-ratio: 16 / 10; }
+  .drawing-grid--portrait .drawing-card:first-child { grid-column: auto; }
+  .drawing-grid--portrait .drawing-card:first-child .drawing-card__preview { aspect-ratio: 3 / 4; }
 }
 
 @media (max-width: 360px) {
