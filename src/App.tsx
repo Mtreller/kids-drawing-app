@@ -1083,15 +1083,18 @@ export function App() {
     const pointerType = event.pointerType;
     const verticalPalette = window.matchMedia('(orientation: landscape) and (max-height: 600px)').matches;
     const source = event.currentTarget as HTMLElement;
+    const paletteScroller = source.closest<HTMLElement>('.palette__scroller');
     let filling = false;
     let scrolling = false;
     let lastX = startX;
     let lastY = startY;
+    if (verticalPalette && pointerType === 'touch') event.preventDefault();
     try { source.setPointerCapture(pointerId); } catch { /* Window listeners still keep the drag reliable. */ }
     setBrushCursor(null);
     const activateFill = () => {
       if (filling || scrolling) return;
       filling = true;
+      setColor(swatchColor);
       setTool('fill');
       setPanel(null);
       setDrawingActive(false);
@@ -1104,6 +1107,7 @@ export function App() {
     const clearHold = () => window.clearTimeout(holdTimer);
     const move = (moveEvent: PointerEvent) => {
       if (moveEvent.pointerId !== pointerId) return;
+      const previousY = lastY;
       lastX = moveEvent.clientX;
       lastY = moveEvent.clientY;
       const deltaX = moveEvent.clientX - startX;
@@ -1115,6 +1119,13 @@ export function App() {
       if (!filling && !scrolling && pointerType === 'touch' && paletteScroll) {
         scrolling = true;
         clearHold();
+        if (verticalPalette && paletteScroller) paletteScroller.scrollTop -= deltaY;
+      } else if (scrolling && verticalPalette && paletteScroller) {
+        paletteScroller.scrollTop -= moveEvent.clientY - previousY;
+      }
+      if (scrolling) {
+        if (verticalPalette) moveEvent.preventDefault();
+        return;
       }
       const draggedTowardCanvas = verticalPalette
         ? deltaX < -8 && Math.abs(deltaX) > Math.abs(deltaY) * .55
@@ -1131,9 +1142,9 @@ export function App() {
     };
     const up = (upEvent: PointerEvent) => {
       if (upEvent.pointerId !== pointerId) return;
-      window.removeEventListener('pointermove', move);
-      window.removeEventListener('pointerup', up);
-      window.removeEventListener('pointercancel', cancel);
+      document.removeEventListener('pointermove', move, true);
+      document.removeEventListener('pointerup', up, true);
+      document.removeEventListener('pointercancel', cancel, true);
       clearHold();
       setDragColor(null);
       clearFillPreview();
@@ -1147,16 +1158,16 @@ export function App() {
     };
     const cancel = (cancelEvent: PointerEvent) => {
       if (cancelEvent.pointerId !== pointerId) return;
-      window.removeEventListener('pointermove', move);
-      window.removeEventListener('pointerup', up);
-      window.removeEventListener('pointercancel', cancel);
+      document.removeEventListener('pointermove', move, true);
+      document.removeEventListener('pointerup', up, true);
+      document.removeEventListener('pointercancel', cancel, true);
       clearHold();
       setDragColor(null);
       clearFillPreview();
     };
-    window.addEventListener('pointermove', move, { passive: false });
-    window.addEventListener('pointerup', up);
-    window.addEventListener('pointercancel', cancel);
+    document.addEventListener('pointermove', move, { capture: true, passive: false });
+    document.addEventListener('pointerup', up, true);
+    document.addEventListener('pointercancel', cancel, true);
   };
 
   const selectedObject = objects.find((object) => object.id === selectedId) ?? null;

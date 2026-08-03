@@ -377,9 +377,9 @@ button { border: 0; color: inherit; font: inherit; touch-action: manipulation; -
     backdrop-filter: blur(16px);
   }
   .app-shell.is-left-handed .palette { right: max(4px, env(safe-area-inset-right)); left: auto; }
-  .palette__scroller { height: 100%; flex-direction: column; justify-content: flex-start; gap: 7px; padding: 1px; overflow-x: hidden; overflow-y: auto; touch-action: pan-y; pointer-events: auto; }
+  .palette__scroller { height: 100%; flex-direction: column; justify-content: flex-start; gap: 7px; padding: 1px; overflow-x: hidden; overflow-y: auto; touch-action: none; pointer-events: auto; }
   .swatch { width: 34px; height: 34px; border-width: 3px; }
-  .palette .swatch { touch-action: pan-y; }
+  .palette .swatch { touch-action: none; }
   .shapes-popover, .sticker-popover, .app-shell.is-left-handed .shapes-popover, .app-shell.is-left-handed .sticker-popover { left: auto; right: 140px; bottom: 50%; max-width: 280px; transform: translateY(50%); }
   .brush-popover { left: 8px; right: auto; bottom: 50%; max-height: calc(100dvh - 12px); overflow-y: auto; transform: translateY(50%); }
   .ios-focus-help { width: min(390px, calc(100vw - 24px)); grid-template-columns: 44px minmax(0, 1fr); gap: 8px 11px; padding: 16px; border-radius: 21px; }
