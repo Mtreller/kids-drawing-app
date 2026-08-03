@@ -143,13 +143,13 @@ button { border: 0; color: inherit; font: inherit; touch-action: manipulation; -
 .view-controls button span { font-size: 8px; }
 .view-controls .rotation-reset { min-width: 42px; color: #6d6578; font-size: 10px; background: transparent; }
 .view-controls .zoom-reset { min-width: 58px; color: white; font-size: 10px; background: #755cff; }
-.app-shell.is-focus { grid-template-rows: var(--bar-height) minmax(0, 1fr) 0; }
-.app-shell.is-focus .palette { visibility: hidden; overflow: hidden; padding-block: 0; border: 0; opacity: 0; pointer-events: none; }
-.app-shell.is-focus .workspace { padding-top: 12px; padding-bottom: max(82px, env(safe-area-inset-bottom)); }
-.app-shell.is-focus .tool-dock { bottom: max(18px, env(safe-area-inset-bottom)); }
+.app-shell.is-focus { grid-template-rows: var(--bar-height) minmax(0, 1fr) auto; }
+.app-shell.is-focus .palette { visibility: visible; opacity: 1; pointer-events: auto; }
+.app-shell.is-focus .workspace { padding-top: 8px; }
+.app-shell.is-focus .tool-dock { bottom: 80px; }
 .app-shell.is-drawing .topbar, .app-shell.is-drawing .palette, .app-shell.is-drawing .tool-dock, .app-shell.is-drawing .side-controls { opacity: 0; pointer-events: none; }
 .app-shell.is-drawing .tool-dock { transform: translate(-50%, 18px); }
-.app-shell.is-focus.is-drawing .topbar { opacity: 1; pointer-events: auto; }
+.app-shell.is-focus.is-drawing .topbar, .app-shell.is-focus.is-drawing .palette { opacity: 1; pointer-events: auto; }
 
 .app-shell.is-left-handed .canvas-cluster { flex-direction: row-reverse; }
 .app-shell.is-left-handed .actions-popover { right: auto; left: 14px; }
@@ -292,22 +292,70 @@ button { border: 0; color: inherit; font: inherit; touch-action: manipulation; -
   .tool-dock .icon-button svg { width: 21px; height: 21px; }
 }
 
-@media (max-height: 540px) and (orientation: landscape) {
-  .app-shell { --bar-height: 54px; }
-  .workspace { gap: 4px; padding: 4px 68px 4px 6px; }
-  .workspace-hud { min-height: 34px; }
-  .tool-dock { left: auto; right: 12px; bottom: 50%; flex-direction: column; transform: translateY(50%); }
-  .app-shell.is-left-handed .tool-dock { right: auto; left: 12px; }
-  .app-shell.is-drawing .tool-dock { transform: translateY(50%) translateX(18px); }
-  .app-shell.is-left-handed.is-drawing .tool-dock { transform: translateY(50%) translateX(-18px); }
-  .app-shell.is-focus .tool-dock { bottom: 50%; }
-  .tool-dock .icon-button { min-width: 40px; width: 40px; height: 40px; }
+@media (max-height: 600px) and (orientation: landscape) {
+  .app-shell { --bar-height: 50px; grid-template-rows: var(--bar-height) minmax(0, 1fr) 0; }
+  .topbar { padding: max(5px, env(safe-area-inset-top)) max(8px, env(safe-area-inset-right)) 5px max(8px, env(safe-area-inset-left)); }
+  .brand { gap: 0; }
+  .brand > span:last-child { display: none; }
+  .brand__mark { width: 34px; height: 34px; border-radius: 11px; }
+  .topbar__actions { gap: 4px; }
+  .topbar .icon-button, .topbar .gallery-button, .topbar .library-button { min-width: 38px; width: 38px; height: 38px; padding: 0; border-radius: 12px; font-size: 0; }
+  .topbar .icon-button > span, .topbar .gallery-button span, .topbar .library-button span { font-size: 19px; }
+  .workspace, .app-shell.is-focus .workspace { gap: 4px; padding: 4px 100px 46px 5px; }
+  .app-shell.is-left-handed .workspace, .app-shell.is-left-handed.is-focus .workspace { padding-right: 5px; padding-left: 100px; }
+  .workspace-hud { min-height: 32px; gap: 4px; overflow-x: auto; scrollbar-width: none; }
+  .workspace-hud::-webkit-scrollbar { display: none; }
+  .status-pill { min-width: 120px; flex-basis: 120px; padding: 6px 8px; font-size: 9px; }
+  .line-mode-badge { padding: 5px 7px; }
+  .line-mode-badge span, .selection-toolbar > span { display: none; }
+  .selection-toolbar { padding-left: 5px; }
+  .view-controls { margin-left: auto; padding: 2px; }
+  .view-controls button { min-width: 29px; height: 28px; padding: 0 5px; }
+  .view-controls .rotation-reset { min-width: 34px; }
+  .view-controls .zoom-reset { min-width: 47px; }
+  .tool-dock, .app-shell.is-focus .tool-dock {
+    left: auto;
+    right: max(6px, env(safe-area-inset-right));
+    bottom: 50%;
+    grid-template-columns: repeat(2, 36px);
+    display: grid;
+    gap: 3px;
+    padding: 5px;
+    border-radius: 18px;
+    transform: translateY(50%);
+  }
+  .app-shell.is-left-handed .tool-dock { right: auto; left: max(6px, env(safe-area-inset-left)); }
+  .app-shell.is-drawing .tool-dock { transform: translateY(50%) translateX(12px); }
+  .app-shell.is-left-handed.is-drawing .tool-dock { transform: translateY(50%) translateX(-12px); }
+  .tool-dock .icon-button { min-width: 36px; width: 36px; height: 36px; border-radius: 12px; }
+  .tool-dock .icon-button svg { width: 20px; height: 20px; }
+  .side-controls { width: 48px; flex-basis: 48px; grid-template-rows: 28px auto auto auto; gap: 3px; padding: 5px 1px 6px; border-radius: 17px; }
+  .side-controls .control-icon { width: 28px; height: 28px; }
+  .side-controls .control-value { width: 43px; padding: 5px 2px; font-size: 10px; }
+  .side-controls .vertical-range-wrap { height: clamp(76px, 25vh, 105px); }
+  .side-controls input[type="range"] { width: clamp(76px, 25vh, 105px); }
+  .side-controls .control-label { font-size: 7px; }
   .side-controls--right { display: none; }
-  .palette { position: fixed; z-index: 7; bottom: 0; left: 0; right: 82px; background: transparent; border: 0; pointer-events: none; }
-  .palette__scroller { justify-content: center; pointer-events: auto; }
-  .swatch { width: 34px; height: 34px; }
-  .shapes-popover, .sticker-popover { left: auto; right: 76px; bottom: 50%; max-width: 280px; transform: translateY(50%); }
-  .brush-popover { left: 12px; right: auto; bottom: 50%; max-height: calc(100dvh - 16px); overflow-y: auto; transform: translateY(50%); }
+  .palette, .app-shell.is-focus .palette {
+    position: fixed;
+    z-index: 7;
+    right: 96px;
+    bottom: 0;
+    left: 0;
+    visibility: visible;
+    padding: 3px max(6px, env(safe-area-inset-right)) max(3px, env(safe-area-inset-bottom)) max(6px, env(safe-area-inset-left));
+    border: 0;
+    background: rgb(255 255 255 / 86%);
+    opacity: 1;
+    pointer-events: auto;
+    backdrop-filter: blur(16px);
+  }
+  .app-shell.is-left-handed .palette { right: 0; left: 96px; }
+  .palette__scroller { justify-content: flex-start; gap: 8px; padding: 1px; pointer-events: auto; }
+  .swatch { width: 34px; height: 34px; border-width: 3px; }
+  .shapes-popover, .sticker-popover { left: auto; right: 96px; bottom: 50%; max-width: 280px; transform: translateY(50%); }
+  .app-shell.is-left-handed .shapes-popover, .app-shell.is-left-handed .sticker-popover { right: auto; left: 96px; }
+  .brush-popover { left: 8px; right: auto; bottom: 50%; max-height: calc(100dvh - 12px); overflow-y: auto; transform: translateY(50%); }
 }
 
 @media (prefers-reduced-motion: reduce) { * { scroll-behavior: auto !important; transition: none !important; } }
