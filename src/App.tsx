@@ -10,6 +10,13 @@ const colors = [
   '#f3b78b', '#b9784c', '#704332', '#ffffff', '#aab2bd', '#4b5260', '#171823',
 ];
 const stickers = ['⭐', '🌈', '🦋', '🦖', '🐯', '🐙', '🌸', '❤️', '🚀', '☀️'];
+const pawPatrolPages = [
+  { title: 'Mighty Pups Team', file: 'mighty-pups-team.webp' },
+  { title: 'Everest', file: 'everest-sitting-proudly.webp' },
+  { title: 'Skye', file: 'skye-smiling.webp' },
+  { title: 'Marshall', file: 'marshall-sitting-panting.webp' },
+  { title: 'Chase', file: 'chase-standing-proudly.webp' },
+].map((page) => ({ ...page, src: `${import.meta.env.BASE_URL}drawings/paw-patrol/${page.file}` }));
 
 type DragColor = { color: string; x: number; y: number } | null;
 type Gesture = { distance: number; angle: number; width: number; height: number; rotation: number };
@@ -44,7 +51,7 @@ export function App() {
   const [tolerance, setTolerance] = useState(32);
   const [objects, setObjects] = useState<ArtObject[]>([]);
   const [selectedId, setSelectedId] = useState<string | null>(null);
-  const [panel, setPanel] = useState<'shapes' | 'stickers' | 'actions' | null>(null);
+  const [panel, setPanel] = useState<'shapes' | 'stickers' | 'actions' | 'library' | null>(null);
   const [dragColor, setDragColor] = useState<DragColor>(null);
   const [message, setMessage] = useState('Choose a tool and start creating!');
   const [revision, setRevision] = useState(0);
@@ -277,9 +284,7 @@ export function App() {
     notify('Fresh canvas ready');
   };
 
-  const upload = (file: File) => {
-    const image = new Image();
-    image.onload = () => {
+  const placeImage = (image: HTMLImageElement, successMessage: string) => {
       const context = backingRef.current?.getContext('2d');
       if (!context) return;
       context.globalCompositeOperation = 'source-over';
@@ -300,10 +305,24 @@ export function App() {
       setSelectedId(null);
       setRevision((value) => value + 1);
       window.setTimeout(pushHistory);
-      notify('Picture fitted with a protected fill border');
+      setPanel(null);
+      notify(successMessage);
+  };
+
+  const upload = (file: File) => {
+    const image = new Image();
+    image.onload = () => {
+      placeImage(image, 'Picture fitted with a protected fill border');
       URL.revokeObjectURL(image.src);
     };
     image.src = URL.createObjectURL(file);
+  };
+
+  const loadLibraryPage = (src: string, title: string) => {
+    const image = new Image();
+    image.onload = () => placeImage(image, `${title} is ready to color!`);
+    image.onerror = () => notify('That coloring page could not be loaded');
+    image.src = src;
   };
 
   const save = () => {
@@ -352,6 +371,7 @@ export function App() {
         <div className="topbar__actions">
           <IconButton icon="↶" label="Undo" disabled={!historyState.undo} onClick={undo} />
           <IconButton icon="↷" label="Redo" disabled={!historyState.redo} onClick={redo} />
+          <button className="library-button" type="button" onClick={() => setPanel('library')}><span aria-hidden="true">▦</span><b>Drawings</b></button>
           <button className="gallery-button" type="button" onClick={() => setPanel(panel === 'actions' ? null : 'actions')}><span aria-hidden="true">•••</span><b>Actions</b></button>
         </div>
       </header>
@@ -397,6 +417,22 @@ export function App() {
         <button onClick={save}>⬇️ <span>Save PNG</span></button>
         <button onClick={clearArt}>✨ <span>New canvas</span></button>
         <label>Fill tolerance <b>{tolerance}</b><input type="range" min="5" max="80" value={tolerance} onChange={(event) => setTolerance(Number(event.target.value))} /></label>
+      </div>}
+      {panel === 'library' && <div className="library-backdrop" role="presentation" onPointerDown={(event) => { if (event.target === event.currentTarget) setPanel(null); }}>
+        <section className="library-panel" role="dialog" aria-modal="true" aria-labelledby="library-title">
+          <header>
+            <div><span className="eyebrow">Drawing library</span><h2 id="library-title">Pick a page</h2></div>
+            <button type="button" aria-label="Close drawing library" onClick={() => setPanel(null)}>×</button>
+          </header>
+          <div className="category-heading"><span>🐾</span><div><h3>Paw Patrol</h3><p>Five adventures ready to color</p></div></div>
+          <div className="drawing-grid">
+            {pawPatrolPages.map((page) => <button key={page.file} type="button" className="drawing-card" onClick={() => loadLibraryPage(page.src, page.title)}>
+              <span className="drawing-card__preview"><img src={page.src} alt="" loading="lazy" /></span>
+              <strong>{page.title}</strong>
+              <small>Tap to color</small>
+            </button>)}
+          </div>
+        </section>
       </div>}
 
       <footer className="palette" aria-label="Color palette">
