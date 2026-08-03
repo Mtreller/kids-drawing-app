@@ -1,6 +1,6 @@
 import { type CSSProperties, type ReactNode, useCallback, useEffect, useLayoutEffect, useRef, useState } from 'react';
 import {
-  ART_HEIGHT, ART_WIDTH, ArtObject, Point, Snapshot, Tool, canvasPoint,
+  ART_HEIGHT, ART_WIDTH, ArtObject, Point, Snapshot, Tool,
   drawObject, fillRegion, hitObject, hitResizeHandle, hitRotateHandle, newObject,
 } from './drawing';
 import { loadCurrentArtwork, saveCurrentArtwork } from './storage';
@@ -27,7 +27,7 @@ const unicornPrincessPages = [
 
 type DragColor = { color: string; x: number; y: number } | null;
 type Gesture = { distance: number; angle: number; width: number; height: number; rotation: number };
-type ViewGesture = { distance: number; center: Point; zoom: number; pan: Point };
+type ViewGesture = { distance: number; angle: number; center: Point; zoom: number; pan: Point; rotation: number };
 type MultiTouch = { startedAt: number; maxPointers: number; moved: boolean; initial: Map<number, Point> };
 type MouseResize = { id: string; distance: number; width: number; height: number };
 type MouseRotate = { id: string; angle: number; rotation: number };
@@ -146,6 +146,7 @@ export function App() {
   const [revision, setRevision] = useState(0);
   const [zoom, setZoom] = useState(1);
   const [pan, setPan] = useState<Point>({ x: 0, y: 0 });
+  const [canvasRotation, setCanvasRotation] = useState(0);
   const [historyState, setHistoryState] = useState({ undo: false, redo: false });
   const [focusMode, setFocusMode] = useState(false);
   const [drawingActive, setDrawingActive] = useState(false);
@@ -187,8 +188,13 @@ export function App() {
       const availableWidth = Math.max(1, cluster.clientWidth - controls.reduce((sum, element) => sum + element.offsetWidth, 0) - gap * controls.length);
       const availableHeight = Math.max(1, cluster.clientHeight);
       const ratio = canvasSize.width / canvasSize.height;
-      const width = Math.min(availableWidth, availableHeight * ratio);
-      const height = width / ratio;
+      const cosine = Math.abs(Math.cos(canvasRotation));
+      const sine = Math.abs(Math.sin(canvasRotation));
+      const height = Math.min(
+        availableWidth / Math.max(.001, ratio * cosine + sine),
+        availableHeight / Math.max(.001, ratio * sine + cosine),
+      );
+      const width = height * ratio;
       setDisplaySize((current) => current && Math.abs(current.width - width) < .5 && Math.abs(current.height - height) < .5 ? current : { width, height });
     };
     measure();
@@ -197,7 +203,34 @@ export function App() {
     if (sizeControlRef.current) observer.observe(sizeControlRef.current);
     if (opacityControlRef.current) observer.observe(opacityControlRef.current);
     return () => observer.disconnect();
-  }, [canvasSize.width, canvasSize.height, focusMode]);
+  }, [canvasSize.width, canvasSize.height, canvasRotation, focusMode]);
+
+  const pointFromClient = useCallback((canvas: HTMLCanvasElement, clientX: number, clientY: number, requireInside = false): Point | null => {
+    const rect = canvas.getBoundingClientRect();
+    const visualX = clientX - (rect.left + rect.width / 2);
+    const visualY = clientY - (rect.top + rect.height / 2);
+    const cosine = Math.cos(canvasRotation);
+    const sine = Math.sin(canvasRotation);
+    const localX = (visualX * cosine + visualY * sine) / zoom + canvas.clientWidth / 2;
+    const localY = (-visualX * sine + visualY * cosine) / zoom + canvas.clientHeight / 2;
+    if (requireInside && (localX < 0 || localX > canvas.clientWidth || localY < 0 || localY > canvas.clientHeight)) return null;
+    return {
+      x: Math.max(0, Math.min(canvas.width, localX * canvas.width / Math.max(1, canvas.clientWidth))),
+      y: Math.max(0, Math.min(canvas.height, localY * canvas.height / Math.max(1, canvas.clientHeight))),
+    };
+  }, [canvasRotation, zoom]);
+
+  useEffect(() => {
+    const preventInterfacePinch = (event: Event) => {
+      if (!(event.target as Element | null)?.closest('.canvas-wrap')) event.preventDefault();
+    };
+    document.addEventListener('gesturestart', preventInterfacePinch, { passive: false });
+    document.addEventListener('gesturechange', preventInterfacePinch, { passive: false });
+    return () => {
+      document.removeEventListener('gesturestart', preventInterfacePinch);
+      document.removeEventListener('gesturechange', preventInterfacePinch);
+    };
+  }, []);
 
   const haptic = (pattern: number | number[] = 8) => {
     if ('vibrate' in navigator) navigator.vibrate(pattern);
@@ -411,6 +444,27 @@ export function App() {
     notify('Canvas fitted to the screen');
   };
 
+  const normalizeRotation = (angle: number) => {
+    const fullTurn = Math.PI * 2;
+    return ((angle + Math.PI) % fullTurn + fullTurn) % fullTurn - Math.PI;
+  };
+
+  const rotateCanvas = (quarterTurns: number) => {
+    setCanvasRotation((angle) => normalizeRotation(angle + quarterTurns * Math.PI / 2));
+    setZoom(1);
+    setPan({ x: 0, y: 0 });
+    haptic(8);
+    notify(`Canvas rotated ${quarterTurns < 0 ? 'left' : 'right'} 90°`);
+  };
+
+  const resetCanvasRotation = () => {
+    setCanvasRotation(0);
+    setZoom(1);
+    setPan({ x: 0, y: 0 });
+    haptic(6);
+    notify('Canvas returned upright');
+  };
+
   const constrainPan = (nextZoom: number, nextPan: Point) => {
     const maxX = (nextZoom - 1) * 360;
     const maxY = (nextZoom - 1) * 280;
@@ -465,8 +519,12 @@ export function App() {
     const canvas = visibleRef.current;
     const backing = backingRef.current;
     const preview = fillPreviewCanvasRef.current;
-    const rect = canvas?.getBoundingClientRect();
-    if (!canvas || !backing || !preview || !rect || clientX < rect.left || clientX > rect.right || clientY < rect.top || clientY > rect.bottom) {
+    if (!canvas || !backing || !preview) {
+      clearFillPreview();
+      return;
+    }
+    const point = pointFromClient(canvas, clientX, clientY, true);
+    if (!point) {
       clearFillPreview();
       return;
     }
@@ -476,7 +534,6 @@ export function App() {
       preview.height = backing.height;
       fillPreviewTargetRef.current = null;
     }
-    const point = canvasPoint(canvas, clientX, clientY);
     const object = hitObject(objectsRef.current, point);
     const base = baseCanvasRef.current ?? copyCanvas(backing);
     baseCanvasRef.current = base;
@@ -516,7 +573,7 @@ export function App() {
     const canvas = event.currentTarget;
     canvas.setPointerCapture(event.pointerId);
     if (event.pointerType === 'mouse' && event.button === 2) return;
-    const point = canvasPoint(canvas, event.clientX, event.clientY);
+    const point = pointFromClient(canvas, event.clientX, event.clientY)!;
     if (tool === 'brush' || tool === 'eraser') setBrushCursor(point);
     pointers.current.set(event.pointerId, point);
     screenPointers.current.set(event.pointerId, { x: event.clientX, y: event.clientY });
@@ -532,9 +589,11 @@ export function App() {
       const [a, b] = [...screenPointers.current.values()];
       viewGesture.current = {
         distance: Math.max(1, Math.hypot(b.x - a.x, b.y - a.y)),
+        angle: Math.atan2(b.y - a.y, b.x - a.x),
         center: { x: (a.x + b.x) / 2, y: (a.y + b.y) / 2 },
         zoom,
         pan: { ...pan },
+        rotation: canvasRotation,
       };
       lastPoint.current = null;
       strokeStarted.current = false;
@@ -547,7 +606,7 @@ export function App() {
         moved: false,
         initial: new Map(screenPointers.current),
       };
-      setMessage('Pinch to zoom • drag two fingers to move');
+      setMessage('Pinch, drag or twist the canvas');
       return;
     }
 
@@ -623,7 +682,7 @@ export function App() {
   };
 
   const pointerMove = (event: React.PointerEvent<HTMLCanvasElement>) => {
-    const point = canvasPoint(event.currentTarget, event.clientX, event.clientY);
+    const point = pointFromClient(event.currentTarget, event.clientX, event.clientY)!;
     if (tool === 'brush' || tool === 'eraser') setBrushCursor(point);
     if (!pointers.current.has(event.pointerId)) return;
     pointers.current.set(event.pointerId, point);
@@ -641,6 +700,7 @@ export function App() {
       const active = [...screenPointers.current.values()];
       const [a, b] = active;
       const distance = Math.max(1, Math.hypot(b.x - a.x, b.y - a.y));
+      const angle = Math.atan2(b.y - a.y, b.x - a.x);
       const center = { x: (a.x + b.x) / 2, y: (a.y + b.y) / 2 };
       if (multiTouch.current) {
         multiTouch.current.maxPointers = Math.max(multiTouch.current.maxPointers, screenPointers.current.size);
@@ -649,12 +709,14 @@ export function App() {
         if (originalA && originalB) {
           const originalDistance = Math.hypot(originalB.x - originalA.x, originalB.y - originalA.y);
           const originalCenter = { x: (originalA.x + originalB.x) / 2, y: (originalA.y + originalB.y) / 2 };
-          if (Math.abs(distance - originalDistance) > 8 || Math.hypot(center.x - originalCenter.x, center.y - originalCenter.y) > 8) multiTouch.current.moved = true;
+          const originalAngle = Math.atan2(originalB.y - originalA.y, originalB.x - originalA.x);
+          if (Math.abs(distance - originalDistance) > 8 || Math.hypot(center.x - originalCenter.x, center.y - originalCenter.y) > 8 || Math.abs(angle - originalAngle) > .05) multiTouch.current.moved = true;
         }
       }
-      if (!viewGesture.current) viewGesture.current = { distance, center, zoom, pan: { ...pan } };
+      if (!viewGesture.current) viewGesture.current = { distance, angle, center, zoom, pan: { ...pan }, rotation: canvasRotation };
       const nextZoom = Math.max(1, Math.min(4, viewGesture.current.zoom * distance / viewGesture.current.distance));
       setZoom(nextZoom);
+      setCanvasRotation(normalizeRotation(viewGesture.current.rotation + angle - viewGesture.current.angle));
       setPan(constrainPan(nextZoom, {
         x: viewGesture.current.pan.x + center.x - viewGesture.current.center.x,
         y: viewGesture.current.pan.y + center.y - viewGesture.current.center.y,
@@ -861,6 +923,7 @@ export function App() {
       setRevision((value) => value + 1);
       setZoom(1);
       setPan({ x: 0, y: 0 });
+      setCanvasRotation(0);
       setPanel(null);
       window.setTimeout(pushHistory);
       haptic([8, 35, 8]);
@@ -898,6 +961,7 @@ export function App() {
       setRevision((value) => value + 1);
       setZoom(1);
       setPan({ x: 0, y: 0 });
+      setCanvasRotation(0);
       window.setTimeout(pushHistory);
       setPanel(null);
       notify(successMessage);
@@ -985,18 +1049,36 @@ export function App() {
     const source = event.currentTarget as HTMLElement;
     let filling = false;
     let scrolling = false;
+    let lastX = startX;
+    let lastY = startY;
     try { source.setPointerCapture(pointerId); } catch { /* Window listeners still keep the drag reliable. */ }
     setBrushCursor(null);
+    const activateFill = () => {
+      if (filling || scrolling) return;
+      filling = true;
+      setTool('fill');
+      setPanel(null);
+      setDrawingActive(false);
+      haptic([8, 28, 8]);
+      const fingerLift = pointerType === 'touch' ? 48 : 0;
+      setDragColor({ color: swatchColor, x: lastX, y: lastY - fingerLift });
+      setMessage('ColorDrop ready • drag to a section and release');
+    };
+    const holdTimer = window.setTimeout(activateFill, pointerType === 'touch' ? 340 : 420);
+    const clearHold = () => window.clearTimeout(holdTimer);
     const move = (moveEvent: PointerEvent) => {
       if (moveEvent.pointerId !== pointerId) return;
+      lastX = moveEvent.clientX;
+      lastY = moveEvent.clientY;
       const deltaX = moveEvent.clientX - startX;
       const deltaY = moveEvent.clientY - startY;
       const distance = Math.hypot(deltaX, deltaY);
-      if (!filling && !scrolling && pointerType === 'touch' && Math.abs(deltaX) > 12 && Math.abs(deltaX) > Math.abs(deltaY) * 1.2) scrolling = true;
+      if (!filling && !scrolling && pointerType === 'touch' && Math.abs(deltaX) > 12 && Math.abs(deltaX) > Math.abs(deltaY) * 1.2) {
+        scrolling = true;
+        clearHold();
+      }
       if (!filling && !scrolling && (pointerType !== 'touch' ? distance > 6 : deltaY < -8 && Math.abs(deltaY) > Math.abs(deltaX) * .55)) {
-        filling = true;
-        haptic(8);
-        setMessage('Drag over a section and release to fill');
+        activateFill();
       }
       if (filling) {
         moveEvent.preventDefault();
@@ -1010,14 +1092,15 @@ export function App() {
       window.removeEventListener('pointermove', move);
       window.removeEventListener('pointerup', up);
       window.removeEventListener('pointercancel', cancel);
+      clearHold();
       setDragColor(null);
       clearFillPreview();
       if (scrolling) return;
       if (!filling) { setColor(swatchColor); haptic(5); return; }
       const canvas = visibleRef.current;
-      const rect = canvas?.getBoundingClientRect();
-      if (canvas && rect && upEvent.clientX >= rect.left && upEvent.clientX <= rect.right && upEvent.clientY >= rect.top && upEvent.clientY <= rect.bottom) {
-        fillAt(canvasPoint(canvas, upEvent.clientX, upEvent.clientY), swatchColor);
+      const dropPoint = canvas ? pointFromClient(canvas, upEvent.clientX, upEvent.clientY, true) : null;
+      if (dropPoint) {
+        fillAt(dropPoint, swatchColor);
       } else notify('Drop the color inside the canvas');
     };
     const cancel = (cancelEvent: PointerEvent) => {
@@ -1025,6 +1108,7 @@ export function App() {
       window.removeEventListener('pointermove', move);
       window.removeEventListener('pointerup', up);
       window.removeEventListener('pointercancel', cancel);
+      clearHold();
       setDragColor(null);
       clearFillPreview();
     };
@@ -1049,6 +1133,21 @@ export function App() {
       </header>
 
       <section className="workspace" onWheel={wheelCanvas}>
+        <div className="workspace-hud">
+          <div className="status-pill" role="status">{message}</div>
+          {stayInLines && <div className="line-mode-badge"><ToolIcon name="magic" size={16} /><span>Stay Inside Lines</span></div>}
+          {selectedObject && <div className="selection-toolbar" aria-label="Selected object controls">
+            <span>{Math.round(selectedObject.width)} × {Math.round(selectedObject.height)} • {Math.round(selectedObject.rotation * 180 / Math.PI)}°</span>
+            <button className="rotate-selection" type="button" onClick={rotateSelected} aria-label="Rotate selected object 15 degrees">↻</button>
+            <button className="delete-selection" type="button" onClick={deleteSelected} aria-label="Delete selected object">×</button>
+          </div>}
+          <div className="view-controls" aria-label="Canvas view controls">
+            <button type="button" onClick={() => rotateCanvas(-1)} aria-label="Rotate canvas left 90 degrees">↶<span>90°</span></button>
+            <button className="rotation-reset" type="button" onClick={resetCanvasRotation} aria-label="Reset canvas rotation">{Math.round(canvasRotation * 180 / Math.PI)}°</button>
+            <button type="button" onClick={() => rotateCanvas(1)} aria-label="Rotate canvas right 90 degrees">↷<span>90°</span></button>
+            <button className="zoom-reset" type="button" onClick={resetView} aria-label="Fit canvas to screen">Fit {Math.round(zoom * 100)}%</button>
+          </div>
+        </div>
         <div className="canvas-stage">
           <div className="canvas-cluster" ref={clusterRef}>
             <aside className="side-controls" ref={sizeControlRef} aria-label="Brush size">
@@ -1057,12 +1156,12 @@ export function App() {
               <VerticalRange label="Brush size" minimum={BRUSH_MIN} maximum={BRUSH_MAX} value={brushSize} onChange={setBrushSize} />
               <span className="control-label">Size</span>
             </aside>
-            <div className="canvas-wrap" style={{ '--page-ratio': canvasSize.width / canvasSize.height, width: displaySize?.width, height: displaySize?.height, transform: `translate3d(${pan.x}px, ${pan.y}px, 0) scale(${zoom})` } as React.CSSProperties}>
+            <div className="canvas-wrap" style={{ '--page-ratio': canvasSize.width / canvasSize.height, width: displaySize?.width, height: displaySize?.height, transform: `translate3d(${pan.x}px, ${pan.y}px, 0) scale(${zoom}) rotate(${canvasRotation}rad)` } as React.CSSProperties}>
               <canvas
                 ref={visibleRef} width={canvasSize.width} height={canvasSize.height} aria-label="Drawing canvas"
                 className={tool === 'move' ? 'is-move-tool' : ''}
                 onPointerDown={pointerDown} onPointerMove={pointerMove} onPointerUp={pointerUp} onPointerCancel={pointerUp}
-                onPointerEnter={(event) => { if (tool === 'brush' || tool === 'eraser') setBrushCursor(canvasPoint(event.currentTarget, event.clientX, event.clientY)); }}
+                onPointerEnter={(event) => { if (tool === 'brush' || tool === 'eraser') setBrushCursor(pointFromClient(event.currentTarget, event.clientX, event.clientY)); }}
                 onPointerLeave={() => { if (!pointers.current.size) setBrushCursor(null); }}
                 onDoubleClick={resetView} onContextMenu={(event) => event.preventDefault()}
               />
@@ -1077,12 +1176,6 @@ export function App() {
                 }}
                 aria-hidden="true"
               />}
-              {stayInLines && <div className="line-mode-badge"><ToolIcon name="magic" size={16} /><span>Stay Inside Lines</span></div>}
-              {selectedObject && <div className="selection-toolbar" aria-label="Selected object controls">
-                <span>{Math.round(selectedObject.width)} × {Math.round(selectedObject.height)} • {Math.round(selectedObject.rotation * 180 / Math.PI)}°</span>
-                <button className="rotate-selection" type="button" onClick={rotateSelected} aria-label="Rotate selected object 15 degrees">↻</button>
-                <button className="delete-selection" type="button" onClick={deleteSelected} aria-label="Delete selected object">×</button>
-              </div>}
             </div>
             <aside className="side-controls side-controls--right" ref={opacityControlRef} aria-label="Brush opacity">
               <span className="control-icon"><ToolIcon name="droplet" size={17} /></span>
@@ -1092,8 +1185,6 @@ export function App() {
             </aside>
           </div>
         </div>
-        <div className="status-pill" role="status">{message}</div>
-        <button className="zoom-reset" type="button" onClick={resetView} aria-label="Fit canvas to screen">{Math.round(zoom * 100)}%</button>
       </section>
 
       <nav className="tool-dock" aria-label="Drawing tools">
@@ -1134,7 +1225,7 @@ export function App() {
         <button type="button" onClick={() => void toggleFocusMode()}>⛶ <span>{focusMode ? 'Exit focus mode' : 'Focus mode'}</span></button>
         <button type="button" onClick={() => { setLeftHanded((value) => !value); haptic(8); }}>↔️ <span>{leftHanded ? 'Right-handed layout' : 'Left-handed layout'}</span></button>
         <label>Fill tolerance <b>{tolerance}</b><input type="range" min="5" max="80" value={tolerance} onChange={(event) => setTolerance(Number(event.target.value))} /></label>
-        <div className="input-hints"><span>✨ Stay Inside Lines locks paint to one section</span><span>👆 1 finger draws</span><span>✌️ 2 fingers zoom • tap undo</span><span>🖱 Ctrl-wheel zoom • Space-drag pan</span></div>
+        <div className="input-hints"><span>✨ Stay Inside Lines locks paint to one section</span><span>🎨 Hold a color to start ColorDrop</span><span>✌️ Pinch to zoom • twist to rotate</span><span>🖱 Ctrl-wheel zoom • Space-drag pan</span></div>
       </div>}
       {panel === 'library' && <div className="library-backdrop" role="presentation" onPointerDown={(event) => { if (event.target === event.currentTarget) setPanel(null); }}>
         <section className="library-panel" role="dialog" aria-modal="true" aria-labelledby="library-title">
