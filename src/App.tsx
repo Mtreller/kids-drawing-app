@@ -100,6 +100,7 @@ export function App() {
   const fileRef = useRef<HTMLInputElement>(null);
   const pointers = useRef(new Map<number, Point>());
   const screenPointers = useRef(new Map<number, Point>());
+  const viewPointerOnCanvas = useRef(new Map<number, boolean>());
   const lastPoint = useRef<Point | null>(null);
   const strokeStarted = useRef(false);
   const fillTap = useRef<Point | null>(null);
@@ -569,49 +570,113 @@ export function App() {
     setMessage('Release to fill the highlighted section');
   };
 
+  const startCanvasNavigation = () => {
+    if (screenPointers.current.size < 2 || navigatingCanvas.current) return;
+    if (strokeStarted.current) pushHistory();
+    activeRegionMaskRef.current = null;
+    const [a, b] = [...screenPointers.current.values()];
+    viewGesture.current = {
+      distance: Math.max(1, Math.hypot(b.x - a.x, b.y - a.y)),
+      angle: Math.atan2(b.y - a.y, b.x - a.x),
+      center: { x: (a.x + b.x) / 2, y: (a.y + b.y) / 2 },
+      zoom,
+      pan: { ...pan },
+      rotation: canvasRotation,
+    };
+    lastPoint.current = null;
+    strokeStarted.current = false;
+    fillTap.current = null;
+    fillTapMoved.current = true;
+    navigatingCanvas.current = true;
+    multiTouch.current = {
+      startedAt: Date.now(),
+      maxPointers: screenPointers.current.size,
+      moved: false,
+      initial: new Map(screenPointers.current),
+    };
+    setBrushCursor(null);
+    setMessage('Pinch, drag or twist anywhere around the canvas');
+  };
+
+  const stagePointerDown = (event: React.PointerEvent<HTMLDivElement>) => {
+    if (event.pointerType !== 'touch') return;
+    screenPointers.current.set(event.pointerId, { x: event.clientX, y: event.clientY });
+    viewPointerOnCanvas.current.set(event.pointerId, Boolean((event.target as Element | null)?.closest('.canvas-wrap')));
+    try { event.currentTarget.setPointerCapture(event.pointerId); } catch { /* Continue tracking through bubbling when capture is unavailable. */ }
+    const startedOutsideCanvas = [...viewPointerOnCanvas.current.values()].some((inside) => !inside);
+    if (screenPointers.current.size === 2 && (tool !== 'move' || !selectedId || startedOutsideCanvas)) startCanvasNavigation();
+    if (screenPointers.current.size > 2 && multiTouch.current) multiTouch.current.maxPointers = screenPointers.current.size;
+  };
+
+  const stagePointerMove = (event: React.PointerEvent<HTMLDivElement>) => {
+    if (!screenPointers.current.has(event.pointerId)) return;
+    screenPointers.current.set(event.pointerId, { x: event.clientX, y: event.clientY });
+    if (!navigatingCanvas.current || screenPointers.current.size < 2) return;
+    event.preventDefault();
+    const [a, b] = [...screenPointers.current.values()];
+    const distance = Math.max(1, Math.hypot(b.x - a.x, b.y - a.y));
+    const angle = Math.atan2(b.y - a.y, b.x - a.x);
+    const center = { x: (a.x + b.x) / 2, y: (a.y + b.y) / 2 };
+    if (multiTouch.current) {
+      multiTouch.current.maxPointers = Math.max(multiTouch.current.maxPointers, screenPointers.current.size);
+      const initial = [...multiTouch.current.initial.values()];
+      if (initial.length >= 2) {
+        const [initialA, initialB] = initial;
+        const initialDistance = Math.hypot(initialB.x - initialA.x, initialB.y - initialA.y);
+        const initialAngle = Math.atan2(initialB.y - initialA.y, initialB.x - initialA.x);
+        const initialCenter = { x: (initialA.x + initialB.x) / 2, y: (initialA.y + initialB.y) / 2 };
+        if (Math.abs(distance - initialDistance) > 8 || Math.abs(angle - initialAngle) > .05 || Math.hypot(center.x - initialCenter.x, center.y - initialCenter.y) > 8) multiTouch.current.moved = true;
+      }
+    }
+    if (!viewGesture.current) return;
+    const nextZoom = Math.max(1, Math.min(4, viewGesture.current.zoom * distance / viewGesture.current.distance));
+    setZoom(nextZoom);
+    setCanvasRotation(normalizeRotation(viewGesture.current.rotation + angle - viewGesture.current.angle));
+    setPan(constrainPan(nextZoom, {
+      x: viewGesture.current.pan.x + center.x - viewGesture.current.center.x,
+      y: viewGesture.current.pan.y + center.y - viewGesture.current.center.y,
+    }));
+  };
+
+  const stagePointerUp = (event: React.PointerEvent<HTMLDivElement>) => {
+    if (event.pointerType !== 'touch' || !screenPointers.current.has(event.pointerId)) return;
+    screenPointers.current.delete(event.pointerId);
+    viewPointerOnCanvas.current.delete(event.pointerId);
+    if (screenPointers.current.size < 2) viewGesture.current = null;
+    if (screenPointers.current.size || !navigatingCanvas.current) return;
+    const touchGesture = multiTouch.current;
+    const isQuickTap = touchGesture && !touchGesture.moved && Date.now() - touchGesture.startedAt < 320;
+    multiTouch.current = null;
+    navigatingCanvas.current = false;
+    pointers.current.clear();
+    lastPoint.current = null;
+    strokeStarted.current = false;
+    fillTap.current = null;
+    fillTapMoved.current = false;
+    activeRegionMaskRef.current = null;
+    if (isQuickTap && touchGesture.maxPointers >= 3) {
+      redo();
+      notify('Redo');
+    } else if (isQuickTap && touchGesture.maxPointers === 2) {
+      undo();
+      notify('Undo');
+    } else {
+      notify(`Canvas ${Math.round(zoom * 100)}% • ${Math.round(canvasRotation * 180 / Math.PI)}°`);
+    }
+    endDrawing();
+  };
+
   const pointerDown = (event: React.PointerEvent<HTMLCanvasElement>) => {
     const canvas = event.currentTarget;
     canvas.setPointerCapture(event.pointerId);
     if (event.pointerType === 'mouse' && event.button === 2) return;
+    if (navigatingCanvas.current) return;
     const point = pointFromClient(canvas, event.clientX, event.clientY)!;
     if (tool === 'brush' || tool === 'eraser') setBrushCursor(point);
     pointers.current.set(event.pointerId, point);
-    screenPointers.current.set(event.pointerId, { x: event.clientX, y: event.clientY });
 
     if ((event.button === 1 || (spaceHeld.current && event.button === 0)) && event.pointerType === 'mouse') {
       mousePan.current = { point: { x: event.clientX, y: event.clientY }, pan: { ...pan } };
-      return;
-    }
-
-    if (screenPointers.current.size === 2 && tool !== 'move') {
-      if (strokeStarted.current) pushHistory();
-      activeRegionMaskRef.current = null;
-      const [a, b] = [...screenPointers.current.values()];
-      viewGesture.current = {
-        distance: Math.max(1, Math.hypot(b.x - a.x, b.y - a.y)),
-        angle: Math.atan2(b.y - a.y, b.x - a.x),
-        center: { x: (a.x + b.x) / 2, y: (a.y + b.y) / 2 },
-        zoom,
-        pan: { ...pan },
-        rotation: canvasRotation,
-      };
-      lastPoint.current = null;
-      strokeStarted.current = false;
-      fillTap.current = null;
-      fillTapMoved.current = true;
-      navigatingCanvas.current = true;
-      multiTouch.current = {
-        startedAt: Date.now(),
-        maxPointers: 2,
-        moved: false,
-        initial: new Map(screenPointers.current),
-      };
-      setMessage('Pinch, drag or twist the canvas');
-      return;
-    }
-
-    if (screenPointers.current.size > 2 && multiTouch.current && tool !== 'move') {
-      multiTouch.current.maxPointers = screenPointers.current.size;
       return;
     }
 
@@ -684,42 +749,14 @@ export function App() {
   const pointerMove = (event: React.PointerEvent<HTMLCanvasElement>) => {
     const point = pointFromClient(event.currentTarget, event.clientX, event.clientY)!;
     if (tool === 'brush' || tool === 'eraser') setBrushCursor(point);
+    if (navigatingCanvas.current) return;
     if (!pointers.current.has(event.pointerId)) return;
     pointers.current.set(event.pointerId, point);
-    screenPointers.current.set(event.pointerId, { x: event.clientX, y: event.clientY });
 
     if (mousePan.current) {
       setPan(constrainPan(zoom, {
         x: mousePan.current.pan.x + event.clientX - mousePan.current.point.x,
         y: mousePan.current.pan.y + event.clientY - mousePan.current.point.y,
-      }));
-      return;
-    }
-
-    if (screenPointers.current.size >= 2 && tool !== 'move') {
-      const active = [...screenPointers.current.values()];
-      const [a, b] = active;
-      const distance = Math.max(1, Math.hypot(b.x - a.x, b.y - a.y));
-      const angle = Math.atan2(b.y - a.y, b.x - a.x);
-      const center = { x: (a.x + b.x) / 2, y: (a.y + b.y) / 2 };
-      if (multiTouch.current) {
-        multiTouch.current.maxPointers = Math.max(multiTouch.current.maxPointers, screenPointers.current.size);
-        const originalA = multiTouch.current.initial.get([...screenPointers.current.keys()][0]);
-        const originalB = multiTouch.current.initial.get([...screenPointers.current.keys()][1]);
-        if (originalA && originalB) {
-          const originalDistance = Math.hypot(originalB.x - originalA.x, originalB.y - originalA.y);
-          const originalCenter = { x: (originalA.x + originalB.x) / 2, y: (originalA.y + originalB.y) / 2 };
-          const originalAngle = Math.atan2(originalB.y - originalA.y, originalB.x - originalA.x);
-          if (Math.abs(distance - originalDistance) > 8 || Math.hypot(center.x - originalCenter.x, center.y - originalCenter.y) > 8 || Math.abs(angle - originalAngle) > .05) multiTouch.current.moved = true;
-        }
-      }
-      if (!viewGesture.current) viewGesture.current = { distance, angle, center, zoom, pan: { ...pan }, rotation: canvasRotation };
-      const nextZoom = Math.max(1, Math.min(4, viewGesture.current.zoom * distance / viewGesture.current.distance));
-      setZoom(nextZoom);
-      setCanvasRotation(normalizeRotation(viewGesture.current.rotation + angle - viewGesture.current.angle));
-      setPan(constrainPan(nextZoom, {
-        x: viewGesture.current.pan.x + center.x - viewGesture.current.center.x,
-        y: viewGesture.current.pan.y + center.y - viewGesture.current.center.y,
       }));
       return;
     }
@@ -792,13 +829,15 @@ export function App() {
     const hadMultiplePointers = screenPointers.current.size > 1;
     const releasedPoint = pointers.current.get(event.pointerId) ?? null;
     pointers.current.delete(event.pointerId);
-    screenPointers.current.delete(event.pointerId);
+    if (navigatingCanvas.current) {
+      if (event.pointerType === 'touch') setBrushCursor(null);
+      return;
+    }
     if (mousePan.current) {
       mousePan.current = null;
       if (!screenPointers.current.size) notify(`Canvas zoom ${Math.round(zoom * 100)}%`);
       return;
     }
-    if (screenPointers.current.size < 2) viewGesture.current = null;
 
     if (tool === 'fill' && fillTap.current && !fillTapMoved.current && !hadMultiplePointers) {
       fillAt(fillTap.current);
@@ -821,20 +860,6 @@ export function App() {
       gesture.current = null;
       activeRegionMaskRef.current = null;
       objectChanged.current = false;
-      const touchGesture = multiTouch.current;
-      const isQuickTap = touchGesture && !touchGesture.moved && Date.now() - touchGesture.startedAt < 320;
-      multiTouch.current = null;
-      const wasNavigating = navigatingCanvas.current;
-      navigatingCanvas.current = false;
-      if (isQuickTap && touchGesture.maxPointers >= 3) {
-        redo();
-        notify('Redo');
-      } else if (isQuickTap && touchGesture.maxPointers === 2) {
-        undo();
-        notify('Undo');
-      } else if (wasNavigating) {
-        notify(`Canvas zoom ${Math.round(zoom * 100)}%`);
-      }
       endDrawing();
     }
     if (event.pointerType === 'touch') setBrushCursor(null);
@@ -1046,6 +1071,7 @@ export function App() {
     const startY = event.clientY;
     const pointerId = event.pointerId;
     const pointerType = event.pointerType;
+    const verticalPalette = window.matchMedia('(orientation: landscape) and (max-height: 600px)').matches;
     const source = event.currentTarget as HTMLElement;
     let filling = false;
     let scrolling = false;
@@ -1061,7 +1087,7 @@ export function App() {
       setDrawingActive(false);
       haptic([8, 28, 8]);
       const fingerLift = pointerType === 'touch' ? 48 : 0;
-      setDragColor({ color: swatchColor, x: lastX, y: lastY - fingerLift });
+      setDragColor({ color: swatchColor, x: lastX - (verticalPalette ? fingerLift : 0), y: lastY - (verticalPalette ? 0 : fingerLift) });
       setMessage('ColorDrop ready • drag to a section and release');
     };
     const holdTimer = window.setTimeout(activateFill, pointerType === 'touch' ? 340 : 420);
@@ -1073,17 +1099,23 @@ export function App() {
       const deltaX = moveEvent.clientX - startX;
       const deltaY = moveEvent.clientY - startY;
       const distance = Math.hypot(deltaX, deltaY);
-      if (!filling && !scrolling && pointerType === 'touch' && Math.abs(deltaX) > 12 && Math.abs(deltaX) > Math.abs(deltaY) * 1.2) {
+      const paletteScroll = verticalPalette
+        ? Math.abs(deltaY) > 12 && Math.abs(deltaY) > Math.abs(deltaX) * 1.2
+        : Math.abs(deltaX) > 12 && Math.abs(deltaX) > Math.abs(deltaY) * 1.2;
+      if (!filling && !scrolling && pointerType === 'touch' && paletteScroll) {
         scrolling = true;
         clearHold();
       }
-      if (!filling && !scrolling && (pointerType !== 'touch' ? distance > 6 : deltaY < -8 && Math.abs(deltaY) > Math.abs(deltaX) * .55)) {
+      const draggedTowardCanvas = verticalPalette
+        ? deltaX < -8 && Math.abs(deltaX) > Math.abs(deltaY) * .55
+        : deltaY < -8 && Math.abs(deltaY) > Math.abs(deltaX) * .55;
+      if (!filling && !scrolling && (pointerType !== 'touch' ? distance > 6 : draggedTowardCanvas)) {
         activateFill();
       }
       if (filling) {
         moveEvent.preventDefault();
         const fingerLift = pointerType === 'touch' ? 48 : 0;
-        setDragColor({ color: swatchColor, x: moveEvent.clientX, y: moveEvent.clientY - fingerLift });
+        setDragColor({ color: swatchColor, x: moveEvent.clientX - (verticalPalette ? fingerLift : 0), y: moveEvent.clientY - (verticalPalette ? 0 : fingerLift) });
         previewColorDrop(moveEvent.clientX, moveEvent.clientY, swatchColor);
       }
     };
@@ -1148,7 +1180,13 @@ export function App() {
             <button className="zoom-reset" type="button" onClick={resetView} aria-label="Fit canvas to screen">Fit {Math.round(zoom * 100)}%</button>
           </div>
         </div>
-        <div className="canvas-stage">
+        <div
+          className="canvas-stage"
+          onPointerDownCapture={stagePointerDown}
+          onPointerMoveCapture={stagePointerMove}
+          onPointerUp={stagePointerUp}
+          onPointerCancel={stagePointerUp}
+        >
           <div className="canvas-cluster" ref={clusterRef}>
             <aside className="side-controls" ref={sizeControlRef} aria-label="Brush size">
               <span className="control-icon"><ToolIcon name="brush" size={17} /></span>

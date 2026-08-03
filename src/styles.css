@@ -57,7 +57,7 @@ button { border: 0; color: inherit; font: inherit; touch-action: manipulation; -
 
 .workspace { position: relative; min-height: 0; display: grid; grid-template-rows: auto minmax(0, 1fr); gap: 10px; padding: 10px 20px 78px; overflow: hidden; }
 .workspace-hud { z-index: 6; min-width: 0; display: flex; align-items: center; gap: 8px; }
-.canvas-stage { width: 100%; height: 100%; min-width: 0; min-height: 0; display: grid; place-items: center; transform-origin: center; will-change: transform; }
+.canvas-stage { width: 100%; height: 100%; min-width: 0; min-height: 0; display: grid; place-items: center; touch-action: none; transform-origin: center; will-change: transform; }
 .canvas-cluster { width: 100%; height: 100%; min-width: 0; min-height: 0; display: flex; align-items: center; justify-content: center; gap: clamp(10px, 1.5vw, 20px); }
 .canvas-wrap {
   --page-ratio: 1.333;
@@ -68,15 +68,15 @@ button { border: 0; color: inherit; font: inherit; touch-action: manipulation; -
   max-height: none;
   flex: 0 0 auto;
   aspect-ratio: var(--page-ratio);
-  overflow: hidden;
-  border-radius: clamp(18px, 2.2vw, 28px);
+  overflow: visible;
+  border-radius: 3px;
   background: white;
   box-shadow: 0 24px 70px rgb(65 49 92 / 18%), 0 0 0 1px rgb(61 44 88 / 8%);
   touch-action: none;
   transform-origin: center;
   will-change: transform;
 }
-.canvas-wrap canvas { display: block; width: 100%; height: 100%; cursor: crosshair; touch-action: none; }
+.canvas-wrap canvas { display: block; width: 100%; height: 100%; border-radius: 0; cursor: crosshair; touch-action: none; }
 .canvas-wrap canvas.is-move-tool { cursor: move; }
 .fill-preview-canvas { position: absolute; z-index: 2; inset: 0; opacity: 0; filter: drop-shadow(0 0 3px rgb(117 92 255 / 48%)); pointer-events: none; transition: opacity .12s ease; }
 .fill-preview-canvas.is-active { opacity: 1; animation: fill-guide-pulse .9s ease-in-out infinite alternate; }
@@ -261,7 +261,7 @@ button { border: 0; color: inherit; font: inherit; touch-action: manipulation; -
   .view-controls button { min-width: 31px; height: 30px; padding: 0 6px; }
   .view-controls .rotation-reset { min-width: 36px; }
   .view-controls .zoom-reset { min-width: 50px; }
-  .canvas-wrap { border-radius: 22px; }
+  .canvas-wrap { border-radius: 3px; }
   .canvas-cluster { gap: 5px; }
   .side-controls { width: 54px; flex-basis: 54px; grid-template-rows: 32px auto auto auto; gap: 5px; padding: 8px 2px 9px; border-radius: 19px; }
   .side-controls .vertical-range-wrap { height: clamp(92px, 19vh, 142px); }
@@ -301,8 +301,7 @@ button { border: 0; color: inherit; font: inherit; touch-action: manipulation; -
   .topbar__actions { gap: 4px; }
   .topbar .icon-button, .topbar .gallery-button, .topbar .library-button { min-width: 38px; width: 38px; height: 38px; padding: 0; border-radius: 12px; font-size: 0; }
   .topbar .icon-button > span, .topbar .gallery-button span, .topbar .library-button span { font-size: 19px; }
-  .workspace, .app-shell.is-focus .workspace { gap: 4px; padding: 4px 100px 46px 5px; }
-  .app-shell.is-left-handed .workspace, .app-shell.is-left-handed.is-focus .workspace { padding-right: 5px; padding-left: 100px; }
+  .workspace, .app-shell.is-focus .workspace, .app-shell.is-left-handed .workspace, .app-shell.is-left-handed.is-focus .workspace { gap: 4px; padding: 4px 142px 4px 5px; }
   .workspace-hud { min-height: 32px; gap: 4px; overflow-x: auto; scrollbar-width: none; }
   .workspace-hud::-webkit-scrollbar { display: none; }
   .status-pill { min-width: 120px; flex-basis: 120px; padding: 6px 8px; font-size: 9px; }
@@ -315,7 +314,7 @@ button { border: 0; color: inherit; font: inherit; touch-action: manipulation; -
   .view-controls .zoom-reset { min-width: 47px; }
   .tool-dock, .app-shell.is-focus .tool-dock {
     left: auto;
-    right: max(6px, env(safe-area-inset-right));
+    right: max(52px, calc(env(safe-area-inset-right) + 46px));
     bottom: 50%;
     grid-template-columns: repeat(2, 36px);
     display: grid;
@@ -324,9 +323,9 @@ button { border: 0; color: inherit; font: inherit; touch-action: manipulation; -
     border-radius: 18px;
     transform: translateY(50%);
   }
-  .app-shell.is-left-handed .tool-dock { right: auto; left: max(6px, env(safe-area-inset-left)); }
+  .app-shell.is-left-handed .tool-dock { right: max(52px, calc(env(safe-area-inset-right) + 46px)); left: auto; }
   .app-shell.is-drawing .tool-dock { transform: translateY(50%) translateX(12px); }
-  .app-shell.is-left-handed.is-drawing .tool-dock { transform: translateY(50%) translateX(-12px); }
+  .app-shell.is-left-handed.is-drawing .tool-dock { transform: translateY(50%) translateX(12px); }
   .tool-dock .icon-button { min-width: 36px; width: 36px; height: 36px; border-radius: 12px; }
   .tool-dock .icon-button svg { width: 20px; height: 20px; }
   .side-controls { width: 48px; flex-basis: 48px; grid-template-rows: 28px auto auto auto; gap: 3px; padding: 5px 1px 6px; border-radius: 17px; }
@@ -335,26 +334,32 @@ button { border: 0; color: inherit; font: inherit; touch-action: manipulation; -
   .side-controls .vertical-range-wrap { height: clamp(76px, 25vh, 105px); }
   .side-controls input[type="range"] { width: clamp(76px, 25vh, 105px); }
   .side-controls .control-label { font-size: 7px; }
-  .side-controls--right { display: none; }
+  .canvas-cluster, .app-shell.is-left-handed .canvas-cluster { flex-direction: row; gap: 4px; }
+  .canvas-cluster > .side-controls:not(.side-controls--right) { order: -2; }
+  .side-controls--right { order: -3; display: grid; }
   .palette, .app-shell.is-focus .palette {
     position: fixed;
     z-index: 7;
-    right: 96px;
-    bottom: 0;
-    left: 0;
+    top: calc(var(--bar-height) + 4px);
+    right: max(4px, env(safe-area-inset-right));
+    bottom: max(4px, env(safe-area-inset-bottom));
+    left: auto;
+    width: 43px;
     visibility: visible;
-    padding: 3px max(6px, env(safe-area-inset-right)) max(3px, env(safe-area-inset-bottom)) max(6px, env(safe-area-inset-left));
-    border: 0;
+    padding: 4px;
+    overflow: hidden;
+    border: 1px solid rgb(255 255 255 / 82%);
+    border-radius: 17px;
     background: rgb(255 255 255 / 86%);
     opacity: 1;
     pointer-events: auto;
     backdrop-filter: blur(16px);
   }
-  .app-shell.is-left-handed .palette { right: 0; left: 96px; }
-  .palette__scroller { justify-content: flex-start; gap: 8px; padding: 1px; pointer-events: auto; }
+  .app-shell.is-left-handed .palette { right: max(4px, env(safe-area-inset-right)); left: auto; }
+  .palette__scroller { height: 100%; flex-direction: column; justify-content: flex-start; gap: 7px; padding: 1px; overflow-x: hidden; overflow-y: auto; touch-action: pan-y; pointer-events: auto; }
   .swatch { width: 34px; height: 34px; border-width: 3px; }
-  .shapes-popover, .sticker-popover { left: auto; right: 96px; bottom: 50%; max-width: 280px; transform: translateY(50%); }
-  .app-shell.is-left-handed .shapes-popover, .app-shell.is-left-handed .sticker-popover { right: auto; left: 96px; }
+  .palette .swatch { touch-action: pan-y; }
+  .shapes-popover, .sticker-popover, .app-shell.is-left-handed .shapes-popover, .app-shell.is-left-handed .sticker-popover { left: auto; right: 140px; bottom: 50%; max-width: 280px; transform: translateY(50%); }
   .brush-popover { left: 8px; right: auto; bottom: 50%; max-height: calc(100dvh - 12px); overflow-y: auto; transform: translateY(50%); }
 }
 
