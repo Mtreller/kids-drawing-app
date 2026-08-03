@@ -79,6 +79,7 @@ button { border: 0; color: inherit; font: inherit; -webkit-tap-highlight-color: 
 .canvas-wrap canvas.is-move-tool { cursor: move; }
 .selection-toolbar { position: absolute; z-index: 5; top: 12px; right: 12px; display: flex; align-items: center; gap: 8px; padding: 6px 6px 6px 11px; border: 1px solid rgb(255 255 255 / 82%); border-radius: 999px; color: white; font-size: 11px; font-weight: 900; background: rgb(43 35 64 / 84%); box-shadow: 0 8px 24px rgb(34 25 53 / 28%); backdrop-filter: blur(14px); pointer-events: auto; }
 .selection-toolbar button { width: 30px; height: 30px; border-radius: 50%; color: white; font-size: 22px; line-height: 1; background: #ff4969; cursor: pointer; }
+.line-mode-badge { position: absolute; z-index: 4; top: 12px; left: 12px; display: flex; align-items: center; gap: 7px; padding: 8px 11px; border: 1px solid rgb(255 255 255 / 82%); border-radius: 999px; color: white; font-size: 10px; font-weight: 900; background: linear-gradient(135deg, rgb(38 183 139 / 92%), rgb(91 104 239 / 92%)); box-shadow: 0 8px 24px rgb(38 106 106 / 22%); backdrop-filter: blur(14px); pointer-events: none; }
 
 .side-controls {
   position: static;
@@ -147,6 +148,7 @@ button { border: 0; color: inherit; font: inherit; -webkit-tap-highlight-color: 
 }
 .tool-dock .reset-tool { margin-left: 2px; color: #d94666; background: #fff0f3; box-shadow: inset 1px 0 0 #eee5f1; }
 .tool-dock .reset-tool:hover { background: #ffe2e8; }
+.tool-dock .line-safe-tool.is-active { background: linear-gradient(145deg, #22b889, #6171ee); box-shadow: 0 8px 22px rgb(39 167 137 / 30%); }
 
 .popover { position: fixed; z-index: 10; display: flex; padding: 10px; border: 1px solid rgb(255 255 255 / 80%); border-radius: 22px; background: rgb(255 255 255 / 94%); box-shadow: 0 18px 50px rgb(54 39 82 / 24%); backdrop-filter: blur(20px); }
 .popover button { min-width: 64px; min-height: 58px; display: grid; place-items: center; gap: 3px; padding: 8px; border-radius: 14px; font-size: 25px; background: transparent; }
@@ -168,6 +170,14 @@ button { border: 0; color: inherit; font: inherit; -webkit-tap-highlight-color: 
 .brush-popover > header strong { font-size: 16px; }
 .brush-popover > header small { color: #7a7287; font-size: 10px; font-weight: 700; }
 .brush-popover > header button { min-width: 34px; width: 34px; min-height: 34px; height: 34px; padding: 0; border-radius: 50%; color: #665d73; font-size: 22px; background: #eee9f5; }
+.brush-popover .line-mode-setting { min-width: 0; min-height: 64px; display: grid; grid-template-columns: 34px minmax(0, 1fr) auto; place-items: center stretch; gap: 10px; margin-bottom: 8px; padding: 9px 11px; border: 1px solid #ded7e9; border-radius: 16px; color: #51495e; text-align: left; background: #f3eff8; }
+.brush-popover .line-mode-setting:hover { background: #eee9f6; }
+.brush-popover .line-mode-setting.is-on { color: #ffffff; border-color: transparent; background: linear-gradient(135deg, #23b88b, #6874ef); box-shadow: 0 9px 22px rgb(52 153 137 / 22%); }
+.line-mode-setting > span { width: auto; display: grid; gap: 2px; }
+.line-mode-setting b { font-size: 12px; }
+.line-mode-setting small { font-size: 9px; font-weight: 700; opacity: .78; }
+.line-mode-setting em { padding: 5px 7px; border-radius: 999px; font-size: 9px; font-style: normal; font-weight: 900; background: rgb(255 255 255 / 65%); }
+.line-mode-setting.is-on em { background: rgb(255 255 255 / 20%); }
 .brush-preview { height: 76px; display: grid; place-items: center; margin-bottom: 4px; overflow: hidden; border: 1px solid #e5dfee; border-radius: 17px; background-color: #fff; background-image: radial-gradient(#ddd5e8 1px, transparent 1px); background-size: 12px 12px; }
 .brush-preview span { min-width: 8px; min-height: 8px; border-radius: 50%; box-shadow: 0 5px 16px rgb(42 30 64 / 16%); transition: width .12s ease, height .12s ease, opacity .12s ease; }
 .brush-popover label { display: grid; gap: 8px; padding: 9px 5px; }
@@ -219,8 +229,8 @@ button { border: 0; color: inherit; font: inherit; -webkit-tap-highlight-color: 
   .side-controls { width: 48px; flex-basis: 48px; padding-inline: 2px; }
   .side-controls .icon-button { min-width: 38px; width: 38px; height: 38px; }
   .tool-dock { bottom: 70px; }
-  .tool-dock { gap: 5px; padding: 7px; }
-  .tool-dock .icon-button { min-width: 43px; width: 43px; height: 43px; }
+  .tool-dock { gap: 3px; padding: 6px; }
+  .tool-dock .icon-button { min-width: 39px; width: 39px; height: 43px; }
   .palette__scroller { justify-content: flex-start; padding: 3px; }
   .swatch { width: 38px; height: 38px; }
   .shapes-popover, .sticker-popover, .brush-popover { bottom: 132px; }
@@ -236,7 +246,8 @@ button { border: 0; color: inherit; font: inherit; -webkit-tap-highlight-color: 
 
 @media (max-width: 360px) {
   .tool-dock { gap: 3px; padding-inline: 6px; }
-  .tool-dock .icon-button { min-width: 39px; width: 39px; }
+  .tool-dock .icon-button { min-width: 34px; width: 34px; }
+  .tool-dock .icon-button svg { width: 21px; height: 21px; }
 }
 
 @media (max-height: 540px) and (orientation: landscape) {

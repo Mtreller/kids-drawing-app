@@ -1,4 +1,4 @@
-export type ToolIconName = 'brush' | 'eraser' | 'fill' | 'move' | 'shapes' | 'sticker' | 'reset' | 'droplet';
+export type ToolIconName = 'brush' | 'eraser' | 'fill' | 'move' | 'shapes' | 'sticker' | 'reset' | 'droplet' | 'magic';
 
 export function ToolIcon({ name, size = 24 }: { name: ToolIconName; size?: number }) {
   const common = {
@@ -20,5 +20,6 @@ export function ToolIcon({ name, size = 24 }: { name: ToolIconName; size?: numbe
   if (name === 'shapes') return <svg {...common}><rect x="3" y="4" width="10" height="10" rx="2" /><circle cx="16.5" cy="15.5" r="4.5" /></svg>;
   if (name === 'sticker') return <svg {...common}><path d="m12 3 2.7 5.5 6.1.9-4.4 4.3 1 6-5.4-2.8-5.4 2.8 1-6-4.4-4.3 6.1-.9z" /></svg>;
   if (name === 'reset') return <svg {...common}><path d="M4.8 8.2A8 8 0 1 1 4 14" /><path d="M4 4v5h5" /></svg>;
+  if (name === 'magic') return <svg {...common}><path d="M12 3 5.5 5.8v5.3c0 4.2 2.7 8 6.5 9.9 3.8-1.9 6.5-5.7 6.5-9.9V5.8z" /><path d="m9.2 12 1.8 1.8 3.9-4.1" /></svg>;
   return <svg {...common}><path d="M12 3s5.5 6.4 5.5 11A5.5 5.5 0 0 1 6.5 14C6.5 9.4 12 3 12 3Z" /></svg>;
 }

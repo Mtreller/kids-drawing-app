@@ -5,6 +5,7 @@ import {
 } from './drawing';
 import { loadCurrentArtwork, saveCurrentArtwork } from './storage';
 import { ToolIcon } from './icons';
+import { copyCanvas, createRegionMaskCache, drawMaskedLine, getRegionMask, type RegionMaskCache } from './regionMask';
 
 const colors = [
   '#ff385d', '#ff6b6b', '#ff9f43', '#ffc93c', '#f7e967', '#4fdd89', '#21b66f',
@@ -68,6 +69,10 @@ export function App() {
   const history = useRef<Snapshot[]>([]);
   const future = useRef<Snapshot[]>([]);
   const pageBaseRef = useRef<PageBase | null>(null);
+  const baseCanvasRef = useRef<HTMLCanvasElement | null>(null);
+  const regionMaskCacheRef = useRef<RegionMaskCache | null>(null);
+  const activeRegionMaskRef = useRef<HTMLCanvasElement | null>(null);
+  const scratchCanvasRef = useRef<HTMLCanvasElement | null>(null);
 
   const [tool, setTool] = useState<Tool>('brush');
   const [color, setColor] = useState(colors[9]);
@@ -75,6 +80,7 @@ export function App() {
   const [opacity, setOpacity] = useState(1);
   const [flow, setFlow] = useState(.8);
   const [smoothing, setSmoothing] = useState(.35);
+  const [stayInLines, setStayInLines] = useState(false);
   const [tolerance, setTolerance] = useState(32);
   const [objects, setObjects] = useState<ArtObject[]>([]);
   const [canvasSize, setCanvasSize] = useState({ width: ART_WIDTH, height: ART_HEIGHT });
@@ -101,15 +107,16 @@ export function App() {
   }, [leftHanded]);
   useEffect(() => {
     try {
-      const saved = JSON.parse(window.localStorage.getItem('color-pop-brush') ?? '{}') as { flow?: number; smoothing?: number };
+      const saved = JSON.parse(window.localStorage.getItem('color-pop-brush') ?? '{}') as { flow?: number; smoothing?: number; stayInLines?: boolean };
       if (typeof saved.flow === 'number') setFlow(saved.flow);
       if (typeof saved.smoothing === 'number') setSmoothing(saved.smoothing);
+      if (typeof saved.stayInLines === 'boolean') setStayInLines(saved.stayInLines);
     } catch { /* Use the friendly defaults when settings cannot be restored. */ }
   }, []);
   useEffect(() => {
-    try { window.localStorage.setItem('color-pop-brush', JSON.stringify({ flow, smoothing })); }
+    try { window.localStorage.setItem('color-pop-brush', JSON.stringify({ flow, smoothing, stayInLines })); }
     catch { /* Settings still work for this session when storage is unavailable. */ }
-  }, [flow, smoothing]);
+  }, [flow, smoothing, stayInLines]);
   useEffect(() => {
     const fullscreenChanged = () => { if (!document.fullscreenElement) setFocusMode(false); };
     document.addEventListener('fullscreenchange', fullscreenChanged);
@@ -157,6 +164,29 @@ export function App() {
 
   useEffect(() => { render(); }, [render, objects, revision]);
 
+  const capturePageBase = useCallback((source: HTMLCanvasElement) => {
+    const baseCanvas = copyCanvas(source);
+    baseCanvasRef.current = baseCanvas;
+    regionMaskCacheRef.current = null;
+    activeRegionMaskRef.current = null;
+    pageBaseRef.current = { bitmap: baseCanvas.toDataURL('image/png'), width: baseCanvas.width, height: baseCanvas.height };
+  }, []);
+
+  const restoreBaseCanvas = useCallback((base: PageBase) => {
+    pageBaseRef.current = base;
+    regionMaskCacheRef.current = null;
+    activeRegionMaskRef.current = null;
+    const image = new Image();
+    image.onload = () => {
+      const canvas = document.createElement('canvas');
+      canvas.width = base.width;
+      canvas.height = base.height;
+      canvas.getContext('2d')?.drawImage(image, 0, 0, base.width, base.height);
+      baseCanvasRef.current = canvas;
+    };
+    image.src = base.bitmap;
+  }, []);
+
   const snapshot = useCallback((): Snapshot => ({
     bitmap: backingRef.current?.toDataURL('image/png') ?? '',
     objects: objectsRef.current.map((object) => ({ ...object })),
@@ -188,11 +218,11 @@ export function App() {
       const context = backing.getContext('2d')!;
       context.clearRect(0, 0, width, height);
       context.drawImage(image, 0, 0, width, height);
-      pageBaseRef.current = {
+      restoreBaseCanvas({
         bitmap: next.baseBitmap ?? next.bitmap,
         width: next.baseWidth ?? width,
         height: next.baseHeight ?? height,
-      };
+      });
       setCanvasSize({ width, height });
       objectsRef.current = next.objects.map((object) => ({ ...object }));
       setObjects(objectsRef.current);
@@ -200,7 +230,7 @@ export function App() {
       setRevision((value) => value + 1);
     };
     image.src = next.bitmap;
-  }, []);
+  }, [restoreBaseCanvas]);
 
   useEffect(() => {
     const backing = document.createElement('canvas');
@@ -212,7 +242,7 @@ export function App() {
     backingRef.current = backing;
     objectsRef.current = [];
     const blankBitmap = backing.toDataURL('image/png');
-    pageBaseRef.current = { bitmap: blankBitmap, width: ART_WIDTH, height: ART_HEIGHT };
+    capturePageBase(backing);
     history.current = [{
       bitmap: blankBitmap,
       objects: [],
@@ -230,7 +260,7 @@ export function App() {
       applySnapshot(saved);
       setMessage('Your last drawing was restored');
     }).catch(() => undefined);
-  }, []);
+  }, [applySnapshot, capturePageBase]);
 
   const updateObjects = (updater: (items: ArtObject[]) => ArtObject[]) => {
     const next = updater(objectsRef.current);
@@ -257,7 +287,17 @@ export function App() {
     setTool(nextTool);
     setPanel(null);
     setDrawingActive(false);
+    activeRegionMaskRef.current = null;
     haptic(6);
+  };
+
+  const toggleStayInLines = () => {
+    const next = !stayInLines;
+    setStayInLines(next);
+    setTool('brush');
+    activeRegionMaskRef.current = null;
+    haptic(next ? [8, 30, 8] : 6);
+    notify(next ? 'Stay Inside Lines on • Start inside any section' : 'Free drawing mode on');
   };
 
   const toggleFocusMode = async () => {
@@ -273,21 +313,31 @@ export function App() {
   };
 
   const drawLine = (from: Point, to: Point, pointerType = 'touch', pressure = 1) => {
-    const context = backingRef.current?.getContext('2d');
-    if (!context) return;
+    const backing = backingRef.current;
+    const context = backing?.getContext('2d');
+    if (!context || !backing) return;
     const pressureScale = pointerType === 'pen' ? .3 + Math.max(.05, pressure) * .7 : 1;
-    context.save();
-    context.globalAlpha = Math.max(.03, opacity * flow);
-    context.globalCompositeOperation = tool === 'eraser' ? 'destination-out' : 'source-over';
-    context.strokeStyle = color;
-    context.lineWidth = brushSize * pressureScale;
-    context.lineCap = 'round';
-    context.lineJoin = 'round';
-    context.beginPath();
-    context.moveTo(from.x, from.y);
-    context.lineTo(to.x, to.y);
-    context.stroke();
-    context.restore();
+    const lineWidth = brushSize * pressureScale;
+    const alpha = Math.max(.03, opacity * flow);
+    const mask = stayInLines ? activeRegionMaskRef.current : null;
+    if (mask) {
+      const scratch = scratchCanvasRef.current ?? document.createElement('canvas');
+      scratchCanvasRef.current = scratch;
+      drawMaskedLine({ backing, mask, scratch, from, to, color, lineWidth, alpha, erase: tool === 'eraser' });
+    } else {
+      context.save();
+      context.globalAlpha = alpha;
+      context.globalCompositeOperation = tool === 'eraser' ? 'destination-out' : 'source-over';
+      context.strokeStyle = color;
+      context.lineWidth = lineWidth;
+      context.lineCap = 'round';
+      context.lineJoin = 'round';
+      context.beginPath();
+      context.moveTo(from.x, from.y);
+      context.lineTo(to.x, to.y);
+      context.stroke();
+      context.restore();
+    }
     strokeStarted.current = true;
     setRevision((value) => value + 1);
   };
@@ -358,6 +408,7 @@ export function App() {
 
     if (screenPointers.current.size === 2 && tool !== 'move') {
       if (strokeStarted.current) pushHistory();
+      activeRegionMaskRef.current = null;
       const [a, b] = [...screenPointers.current.values()];
       viewGesture.current = {
         distance: Math.max(1, Math.hypot(b.x - a.x, b.y - a.y)),
@@ -415,6 +466,25 @@ export function App() {
       return;
     }
     if (pointers.current.size === 1) {
+      if (stayInLines && (tool === 'brush' || tool === 'eraser')) {
+        const baseCanvas = baseCanvasRef.current ?? (backingRef.current ? copyCanvas(backingRef.current) : null);
+        if (!baseCanvas) {
+          notify('The page is still getting ready');
+          lastPoint.current = null;
+          return;
+        }
+        baseCanvasRef.current = baseCanvas;
+        const cache = regionMaskCacheRef.current ?? createRegionMaskCache(baseCanvas);
+        regionMaskCacheRef.current = cache;
+        const mask = cache ? getRegionMask(cache, point) : null;
+        if (!mask) {
+          notify('Start the brush inside a section, away from the black line');
+          lastPoint.current = null;
+          return;
+        }
+        activeRegionMaskRef.current = mask;
+        setMessage('✨ Painting only inside this section');
+      }
       lastPoint.current = point;
       strokeStarted.current = false;
       beginDrawing();
@@ -545,6 +615,7 @@ export function App() {
       dragOffset.current = null;
       mouseResize.current = null;
       gesture.current = null;
+      activeRegionMaskRef.current = null;
       objectChanged.current = false;
       const touchGesture = multiTouch.current;
       const isQuickTap = touchGesture && !touchGesture.moved && Date.now() - touchGesture.startedAt < 320;
@@ -610,7 +681,7 @@ export function App() {
     context.globalCompositeOperation = 'source-over';
     context.fillStyle = '#ffffff';
     context.fillRect(0, 0, backing.width, backing.height);
-    pageBaseRef.current = { bitmap: backing.toDataURL('image/png'), width: backing.width, height: backing.height };
+    capturePageBase(backing);
     objectsRef.current = [];
     setObjects([]);
     setSelectedId(null);
@@ -668,7 +739,7 @@ export function App() {
       context.strokeStyle = '#171823';
       context.lineWidth = 10;
       context.strokeRect(padding - 5, padding - 5, imageWidth + 10, imageHeight + 10);
-      pageBaseRef.current = { bitmap: backing.toDataURL('image/png'), width, height };
+      capturePageBase(backing);
       setCanvasSize({ width, height });
       objectsRef.current = [];
       setObjects([]);
@@ -737,6 +808,7 @@ export function App() {
       else if (key === ']') setBrushSize((value) => Math.min(90, value + 3));
       else if (key === '0') resetView();
       else if (key === 'r') resetPage();
+      else if (key === 'm') toggleStayInLines();
       else if (key === 'h') void toggleFocusMode();
       else if (key === 'l') setLeftHanded((value) => !value);
       else if ((event.key === 'Delete' || event.key === 'Backspace') && selectedId) { event.preventDefault(); deleteSelected(); }
@@ -783,7 +855,7 @@ export function App() {
   const selectedObject = objects.find((object) => object.id === selectedId) ?? null;
 
   return (
-    <main className={`app-shell${focusMode ? ' is-focus' : ''}${drawingActive ? ' is-drawing' : ''}${leftHanded ? ' is-left-handed' : ''}`}>
+    <main className={`app-shell${focusMode ? ' is-focus' : ''}${drawingActive ? ' is-drawing' : ''}${leftHanded ? ' is-left-handed' : ''}${stayInLines ? ' is-line-safe' : ''}`}>
       <header className="topbar">
         <div className="brand"><span className="brand__mark" aria-hidden="true">✦</span><span>Color Pop</span></div>
         <div className="topbar__actions">
@@ -811,6 +883,7 @@ export function App() {
                 onPointerDown={pointerDown} onPointerMove={pointerMove} onPointerUp={pointerUp} onPointerCancel={pointerUp}
                 onDoubleClick={resetView} onContextMenu={(event) => event.preventDefault()}
               />
+              {stayInLines && <div className="line-mode-badge"><ToolIcon name="magic" size={16} /><span>Stay Inside Lines</span></div>}
               {selectedObject && <div className="selection-toolbar" aria-label="Selected object controls">
                 <span>{Math.round(selectedObject.width)} × {Math.round(selectedObject.height)}</span>
                 <button type="button" onClick={deleteSelected} aria-label="Delete selected object">×</button>
@@ -832,6 +905,7 @@ export function App() {
 
       <nav className="tool-dock" aria-label="Drawing tools">
         <IconButton icon={<ToolIcon name="brush" />} label="Brush" active={tool === 'brush'} onClick={() => chooseTool('brush')} />
+        <IconButton icon={<ToolIcon name="magic" />} label="Stay inside lines" active={stayInLines} className="line-safe-tool" onClick={toggleStayInLines} />
         <IconButton icon={<ToolIcon name="eraser" />} label="Eraser" active={tool === 'eraser'} onClick={() => chooseTool('eraser')} />
         <IconButton icon={<ToolIcon name="fill" />} label="Fill bucket" active={tool === 'fill'} onClick={() => { chooseTool('fill'); notify('Tap an area, or drag a color onto it'); }} />
         <IconButton icon={<ToolIcon name="move" />} label="Move objects" active={tool === 'move'} onClick={() => chooseTool('move')} />
@@ -842,6 +916,9 @@ export function App() {
 
       {panel === 'brush' && <section className="popover brush-popover" role="dialog" aria-label="Brush settings">
         <header><div><strong>Brush settings</strong><small>Fine-tune how paint feels</small></div><button type="button" aria-label="Close brush settings" onClick={() => setPanel(null)}>×</button></header>
+        <button className={`line-mode-setting${stayInLines ? ' is-on' : ''}`} type="button" aria-pressed={stayInLines} onClick={toggleStayInLines}>
+          <ToolIcon name="magic" size={23} /><span><b>Stay Inside Lines</b><small>Paint only inside the section you touch</small></span><em>{stayInLines ? 'On' : 'Off'}</em>
+        </button>
         <div className="brush-preview" aria-hidden="true"><span style={{ width: Math.max(8, Math.min(72, brushSize)), height: Math.max(8, Math.min(72, brushSize)), backgroundColor: color, opacity: Math.max(.12, opacity * flow) }} /></div>
         <label><span><b>Size</b><em>{brushSize}px</em></span><input className="polished-range" style={rangeStyle(brushSize, 3, 90)} type="range" min="3" max="90" value={brushSize} onChange={(event) => setBrushSize(Number(event.target.value))} /></label>
         <label><span><b>Opacity</b><em>{Math.round(opacity * 100)}%</em></span><input className="polished-range" style={rangeStyle(opacity * 100, 10, 100)} type="range" min="10" max="100" value={opacity * 100} onChange={(event) => setOpacity(Number(event.target.value) / 100)} /></label>
@@ -858,12 +935,13 @@ export function App() {
       {panel === 'actions' && <div className="popover actions-popover">
         <button type="button" onClick={() => fileRef.current?.click()}>⬆️ <span>Upload picture</span></button>
         <button type="button" onClick={save}>⬇️ <span>Save PNG</span></button>
+        <button type="button" onClick={toggleStayInLines}><ToolIcon name="magic" size={21} /> <span>{stayInLines ? 'Free drawing mode' : 'Stay inside lines'}</span></button>
         <button type="button" onClick={resetPage}><ToolIcon name="reset" size={21} /> <span>Reset page</span></button>
         <button type="button" onClick={clearArt}>✨ <span>New canvas</span></button>
         <button type="button" onClick={() => void toggleFocusMode()}>⛶ <span>{focusMode ? 'Exit focus mode' : 'Focus mode'}</span></button>
         <button type="button" onClick={() => { setLeftHanded((value) => !value); haptic(8); }}>↔️ <span>{leftHanded ? 'Right-handed layout' : 'Left-handed layout'}</span></button>
         <label>Fill tolerance <b>{tolerance}</b><input type="range" min="5" max="80" value={tolerance} onChange={(event) => setTolerance(Number(event.target.value))} /></label>
-        <div className="input-hints"><span>👆 1 finger draws</span><span>✌️ 2 fingers zoom • tap undo</span><span>🖱 Ctrl-wheel zoom • Space-drag pan</span></div>
+        <div className="input-hints"><span>✨ Stay Inside Lines locks paint to one section</span><span>👆 1 finger draws</span><span>✌️ 2 fingers zoom • tap undo</span><span>🖱 Ctrl-wheel zoom • Space-drag pan</span></div>
       </div>}
       {panel === 'library' && <div className="library-backdrop" role="presentation" onPointerDown={(event) => { if (event.target === event.currentTarget) setPanel(null); }}>
         <section className="library-panel" role="dialog" aria-modal="true" aria-labelledby="library-title">
