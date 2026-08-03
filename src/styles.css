@@ -210,6 +210,15 @@ button { border: 0; color: inherit; font: inherit; touch-action: manipulation; -
 .color-drop-orb { position: fixed; z-index: 99; width: 60px; height: 60px; border: 6px solid white; border-radius: 50%; box-shadow: 0 14px 32px rgb(38 30 54 / 38%); transform: translate(-50%, -50%); pointer-events: none; }
 .visually-hidden { position: fixed; width: 1px; height: 1px; overflow: hidden; opacity: 0; pointer-events: none; }
 
+.ios-focus-backdrop { position: fixed; z-index: 120; inset: 0; display: grid; place-items: center; padding: 18px; background: rgb(29 23 43 / 52%); backdrop-filter: blur(10px); }
+.ios-focus-help { width: min(420px, 100%); display: grid; grid-template-columns: 54px minmax(0, 1fr); gap: 12px 14px; padding: 22px; border: 1px solid rgb(255 255 255 / 85%); border-radius: 26px; background: #fbf9ff; box-shadow: 0 28px 80px rgb(29 20 45 / 34%); }
+.ios-focus-help__icon { grid-row: 1 / span 2; display: grid; width: 54px; height: 54px; place-items: center; border-radius: 17px; color: white; font-size: 30px; font-weight: 900; background: linear-gradient(145deg, #755cff, #bc62e8); }
+.ios-focus-help h2, .ios-focus-help p { margin: 0; }
+.ios-focus-help h2 { margin-top: 3px; font-size: 22px; letter-spacing: -.03em; }
+.ios-focus-help p { grid-column: 1 / -1; color: #5f576b; font-size: 14px; font-weight: 650; line-height: 1.45; }
+.ios-focus-help .ios-focus-help__note { padding: 10px 12px; border-radius: 13px; color: #6653b3; font-size: 12px; background: #eee8ff; }
+.ios-focus-help > button { grid-column: 1 / -1; min-height: 46px; border-radius: 15px; color: white; font-weight: 900; background: #755cff; cursor: pointer; }
+
 .library-backdrop { position: fixed; z-index: 30; inset: 0; display: grid; place-items: center; padding: 20px; background: rgb(31 24 48 / 48%); backdrop-filter: blur(8px); }
 .library-panel { width: min(920px, 100%); max-height: min(760px, calc(100dvh - 32px)); overflow: auto; padding: clamp(18px, 4vw, 34px); border: 1px solid rgb(255 255 255 / 85%); border-radius: 32px; background: #fbf9ff; box-shadow: 0 30px 90px rgb(27 19 43 / 35%); }
 .library-panel > header { display: flex; align-items: center; justify-content: space-between; gap: 20px; }
@@ -301,7 +310,7 @@ button { border: 0; color: inherit; font: inherit; touch-action: manipulation; -
   .topbar__actions { gap: 4px; }
   .topbar .icon-button, .topbar .gallery-button, .topbar .library-button { min-width: 38px; width: 38px; height: 38px; padding: 0; border-radius: 12px; font-size: 0; }
   .topbar .icon-button > span, .topbar .gallery-button span, .topbar .library-button span { font-size: 19px; }
-  .workspace, .app-shell.is-focus .workspace, .app-shell.is-left-handed .workspace, .app-shell.is-left-handed.is-focus .workspace { gap: 4px; padding: 4px 142px 4px 5px; }
+  .workspace, .app-shell.is-focus .workspace, .app-shell.is-left-handed .workspace, .app-shell.is-left-handed.is-focus .workspace { gap: 4px; padding: 4px 142px 4px 108px; }
   .workspace-hud { min-height: 32px; gap: 4px; overflow-x: auto; scrollbar-width: none; }
   .workspace-hud::-webkit-scrollbar { display: none; }
   .status-pill { min-width: 120px; flex-basis: 120px; padding: 6px 8px; font-size: 9px; }
@@ -328,15 +337,28 @@ button { border: 0; color: inherit; font: inherit; touch-action: manipulation; -
   .app-shell.is-left-handed.is-drawing .tool-dock { transform: translateY(50%) translateX(12px); }
   .tool-dock .icon-button { min-width: 36px; width: 36px; height: 36px; border-radius: 12px; }
   .tool-dock .icon-button svg { width: 20px; height: 20px; }
-  .side-controls { width: 48px; flex-basis: 48px; grid-template-rows: 28px auto auto auto; gap: 3px; padding: 5px 1px 6px; border-radius: 17px; }
+  .side-controls {
+    position: fixed;
+    z-index: 6;
+    top: calc(50% + 25px);
+    left: max(56px, calc(env(safe-area-inset-left) + 56px));
+    width: 48px;
+    height: auto;
+    flex-basis: 48px;
+    grid-template-rows: 28px auto auto auto;
+    gap: 3px;
+    padding: 5px 1px 6px;
+    border-radius: 17px;
+    transform: translateY(-50%);
+  }
   .side-controls .control-icon { width: 28px; height: 28px; }
   .side-controls .control-value { width: 43px; padding: 5px 2px; font-size: 10px; }
   .side-controls .vertical-range-wrap { height: clamp(76px, 25vh, 105px); }
   .side-controls input[type="range"] { width: clamp(76px, 25vh, 105px); }
   .side-controls .control-label { font-size: 7px; }
-  .canvas-cluster, .app-shell.is-left-handed .canvas-cluster { flex-direction: row; gap: 4px; }
-  .canvas-cluster > .side-controls:not(.side-controls--right) { order: -2; }
-  .side-controls--right { order: -3; display: grid; }
+  .canvas-cluster, .app-shell.is-left-handed .canvas-cluster { flex-direction: row; gap: 0; }
+  .canvas-cluster > .side-controls:not(.side-controls--right) { left: max(56px, calc(env(safe-area-inset-left) + 56px)); }
+  .side-controls--right { left: max(4px, env(safe-area-inset-left)); display: grid; }
   .palette, .app-shell.is-focus .palette {
     position: fixed;
     z-index: 7;
@@ -361,6 +383,12 @@ button { border: 0; color: inherit; font: inherit; touch-action: manipulation; -
   .palette .swatch { touch-action: pan-y; }
   .shapes-popover, .sticker-popover, .app-shell.is-left-handed .shapes-popover, .app-shell.is-left-handed .sticker-popover { left: auto; right: 140px; bottom: 50%; max-width: 280px; transform: translateY(50%); }
   .brush-popover { left: 8px; right: auto; bottom: 50%; max-height: calc(100dvh - 12px); overflow-y: auto; transform: translateY(50%); }
+  .ios-focus-help { width: min(390px, calc(100vw - 24px)); grid-template-columns: 44px minmax(0, 1fr); gap: 8px 11px; padding: 16px; border-radius: 21px; }
+  .ios-focus-help__icon { width: 44px; height: 44px; border-radius: 14px; font-size: 24px; }
+  .ios-focus-help h2 { font-size: 19px; }
+  .ios-focus-help p { font-size: 12px; }
+  .ios-focus-help .ios-focus-help__note { display: none; }
+  .ios-focus-help > button { min-height: 40px; }
 }
 
 @media (prefers-reduced-motion: reduce) { * { scroll-behavior: auto !important; transition: none !important; } }

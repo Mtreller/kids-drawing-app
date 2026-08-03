@@ -150,6 +150,7 @@ export function App() {
   const [canvasRotation, setCanvasRotation] = useState(0);
   const [historyState, setHistoryState] = useState({ undo: false, redo: false });
   const [focusMode, setFocusMode] = useState(false);
+  const [showIosFocusHelp, setShowIosFocusHelp] = useState(false);
   const [drawingActive, setDrawingActive] = useState(false);
   const [leftHanded, setLeftHanded] = useState(() => {
     try { return window.localStorage.getItem('color-pop-left-handed') === 'true'; }
@@ -184,7 +185,11 @@ export function App() {
     const cluster = clusterRef.current;
     if (!cluster) return;
     const measure = () => {
-      const controls = [sizeControlRef.current, opacityControlRef.current].filter((element) => element && element.offsetWidth > 0) as HTMLElement[];
+      const controls = [sizeControlRef.current, opacityControlRef.current].filter((element) => {
+        if (!element || element.offsetWidth <= 0) return false;
+        const position = getComputedStyle(element).position;
+        return position !== 'fixed' && position !== 'absolute';
+      }) as HTMLElement[];
       const gap = Number.parseFloat(getComputedStyle(cluster).columnGap) || 0;
       const availableWidth = Math.max(1, cluster.clientWidth - controls.reduce((sum, element) => sum + element.offsetWidth, 0) - gap * controls.length);
       const availableHeight = Math.max(1, cluster.clientHeight);
@@ -392,13 +397,18 @@ export function App() {
   const toggleFocusMode = async () => {
     const entering = !focusMode;
     setFocusMode(entering);
+    if (!entering) setShowIosFocusHelp(false);
     setPanel(null);
     setDrawingActive(false);
     haptic(entering ? [8, 35, 8] : 6);
+    const navigatorWithStandalone = navigator as Navigator & { standalone?: boolean };
+    const isIos = /iPad|iPhone|iPod/.test(navigator.userAgent) || (navigator.platform === 'MacIntel' && navigator.maxTouchPoints > 1);
+    const isStandalone = navigatorWithStandalone.standalone === true || window.matchMedia('(display-mode: standalone), (display-mode: fullscreen)').matches;
     try {
       if (entering && !document.fullscreenElement && document.documentElement.requestFullscreen) await document.documentElement.requestFullscreen();
       if (!entering && document.fullscreenElement && document.exitFullscreen) await document.exitFullscreen();
-    } catch { /* iOS uses the distraction-free layout when browser fullscreen is unavailable. */ }
+    } catch { /* iOS Safari does not offer arbitrary-page fullscreen; the Home Screen app does. */ }
+    if (entering && isIos && !isStandalone && !document.fullscreenElement) setShowIosFocusHelp(true);
   };
 
   const drawLine = (from: Point, to: Point, pointerType = 'touch', pressure = 1) => {
@@ -1297,6 +1307,15 @@ export function App() {
         </div>
       </footer>
       <input ref={fileRef} className="visually-hidden" type="file" accept="image/png,image/jpeg,image/webp" onChange={(event) => { const file = event.target.files?.[0]; if (file) upload(file); event.target.value = ''; }} />
+      {showIosFocusHelp && <div className="ios-focus-backdrop" role="presentation" onPointerDown={(event) => { if (event.target === event.currentTarget) setShowIosFocusHelp(false); }}>
+        <section className="ios-focus-help" role="dialog" aria-modal="true" aria-labelledby="ios-focus-title">
+          <span className="ios-focus-help__icon" aria-hidden="true">↥</span>
+          <div><span className="eyebrow">iPhone &amp; iPad</span><h2 id="ios-focus-title">Open truly full screen</h2></div>
+          <p>Safari keeps its address bar and tabs visible. Tap <b>Share</b>, choose <b>Add to Home Screen</b>, then open <b>Color Pop</b> from its new icon.</p>
+          <p className="ios-focus-help__note">Focus mode will then use the whole screen without Safari controls.</p>
+          <button type="button" onClick={() => setShowIosFocusHelp(false)}>Got it</button>
+        </section>
+      </div>}
       {dragColor && <div className="color-drop-orb" style={{ left: dragColor.x, top: dragColor.y, backgroundColor: dragColor.color }} />}
     </main>
   );
