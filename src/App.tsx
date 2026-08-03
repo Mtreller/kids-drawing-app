@@ -981,13 +981,27 @@ export function App() {
     const startX = event.clientX;
     const startY = event.clientY;
     const pointerId = event.pointerId;
-    let moved = false;
+    const pointerType = event.pointerType;
+    const source = event.currentTarget as HTMLElement;
+    let filling = false;
+    let scrolling = false;
+    try { source.setPointerCapture(pointerId); } catch { /* Window listeners still keep the drag reliable. */ }
     setBrushCursor(null);
     const move = (moveEvent: PointerEvent) => {
       if (moveEvent.pointerId !== pointerId) return;
-      if (Math.hypot(moveEvent.clientX - startX, moveEvent.clientY - startY) > 9) moved = true;
-      if (moved) {
-        setDragColor({ color: swatchColor, x: moveEvent.clientX, y: moveEvent.clientY });
+      const deltaX = moveEvent.clientX - startX;
+      const deltaY = moveEvent.clientY - startY;
+      const distance = Math.hypot(deltaX, deltaY);
+      if (!filling && !scrolling && pointerType === 'touch' && Math.abs(deltaX) > 12 && Math.abs(deltaX) > Math.abs(deltaY) * 1.2) scrolling = true;
+      if (!filling && !scrolling && (pointerType !== 'touch' ? distance > 6 : deltaY < -8 && Math.abs(deltaY) > Math.abs(deltaX) * .55)) {
+        filling = true;
+        haptic(8);
+        setMessage('Drag over a section and release to fill');
+      }
+      if (filling) {
+        moveEvent.preventDefault();
+        const fingerLift = pointerType === 'touch' ? 48 : 0;
+        setDragColor({ color: swatchColor, x: moveEvent.clientX, y: moveEvent.clientY - fingerLift });
         previewColorDrop(moveEvent.clientX, moveEvent.clientY, swatchColor);
       }
     };
@@ -998,7 +1012,8 @@ export function App() {
       window.removeEventListener('pointercancel', cancel);
       setDragColor(null);
       clearFillPreview();
-      if (!moved) { setColor(swatchColor); haptic(5); return; }
+      if (scrolling) return;
+      if (!filling) { setColor(swatchColor); haptic(5); return; }
       const canvas = visibleRef.current;
       const rect = canvas?.getBoundingClientRect();
       if (canvas && rect && upEvent.clientX >= rect.left && upEvent.clientX <= rect.right && upEvent.clientY >= rect.top && upEvent.clientY <= rect.bottom) {
@@ -1013,7 +1028,7 @@ export function App() {
       setDragColor(null);
       clearFillPreview();
     };
-    window.addEventListener('pointermove', move);
+    window.addEventListener('pointermove', move, { passive: false });
     window.addEventListener('pointerup', up);
     window.addEventListener('pointercancel', cancel);
   };

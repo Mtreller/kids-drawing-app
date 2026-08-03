@@ -230,9 +230,9 @@ button { border: 0; color: inherit; font: inherit; -webkit-tap-highlight-color: 
 .drawing-card small { padding: 0 3px; color: #81798c; font-size: 10px; font-weight: 700; }
 
 .palette { min-width: 0; padding: 10px max(14px, env(safe-area-inset-right)) max(10px, env(safe-area-inset-bottom)) max(14px, env(safe-area-inset-left)); border-top: 1px solid #e3ddeb; background: rgb(255 255 255 / 90%); }
-.palette__scroller { display: flex; justify-content: center; gap: 11px; overflow-x: auto; scrollbar-width: none; }
+.palette__scroller { display: flex; justify-content: center; gap: 11px; overflow-x: auto; overscroll-behavior-x: contain; scrollbar-width: none; touch-action: pan-x; }
 .palette__scroller::-webkit-scrollbar { display: none; }
-.swatch { flex: 0 0 auto; width: 42px; height: 42px; border: 4px solid white; border-radius: 50%; box-shadow: 0 0 0 1px #d8d1df, 0 5px 12px rgb(44 33 64 / 14%); cursor: pointer; transition: transform .16s ease; }
+.swatch { flex: 0 0 auto; width: 42px; height: 42px; border: 4px solid white; border-radius: 50%; box-shadow: 0 0 0 1px #d8d1df, 0 5px 12px rgb(44 33 64 / 14%); cursor: pointer; touch-action: pan-x; user-select: none; -webkit-user-select: none; -webkit-user-drag: none; transition: transform .16s ease; }
 .swatch.is-selected { transform: translateY(-3px) scale(1.08); box-shadow: 0 0 0 3px #755cff, 0 8px 16px rgb(44 33 64 / 20%); }
 .swatch--picker { color: #716a7c; font-size: 24px; background: conic-gradient(#ff5c77, #ffd93d, #52d681, #3eb8f0, #755cff, #ff5c77); }
 .swatch--picker { position: relative; display: grid; place-items: center; overflow: hidden; }
