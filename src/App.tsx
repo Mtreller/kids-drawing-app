@@ -1,4 +1,5 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
+import type { PointerEvent as ReactPointerEvent } from 'react';
 import { Circle, Layer, Line, Rect, Stage, Star, Text, Transformer } from 'react-konva';
 import type Konva from 'konva';
 
@@ -43,7 +44,7 @@ export default function App(){
  const redo=()=>{const scene=future.at(-1);if(!scene)return;setHistory(x=>[...x,cloneScene(objects,strokes)]);setFuture(x=>x.slice(0,-1));restore(scene)};
  const updateObject=(id:string,patch:Partial<ArtObject>)=>setObjects(items=>items.map(x=>x.id===id?{...x,...patch}:x));
  const select=(id:string|null)=>{setSelectedId(id);requestAnimationFrame(()=>{const node=id?nodeRefs.current[id]:null;transformerRef.current?.nodes(node?[node]:[]);transformerRef.current?.getLayer()?.batchDraw()})};
- const add=(kind:ArtObject['kind'],sticker?:string)=>{pushHistory();const item={id:uid(),kind,x:450,y:310,width:150,height:150,rotation:0,fill:color,sticker};setObjects(x=>[...x,item]);setTool('select');requestAnimationFrame(()=>select(item.id))};
+ const add=(kind:ArtObject['kind'],sticker?:string)=>{pushHistory();const item:ArtObject={id:uid(),kind,x:450,y:310,width:150,height:150,rotation:0,fill:color,sticker};setObjects(x=>[...x,item]);setTool('select');requestAnimationFrame(()=>select(item.id))};
  const deleteSelected=()=>{if(!selectedId)return;pushHistory();setObjects(x=>x.filter(o=>o.id!==selectedId));select(null)};
  const recolorSelected=()=>{if(!selectedId)return;pushHistory();updateObject(selectedId,{fill:color})};
 
@@ -58,20 +59,20 @@ export default function App(){
 
  const stagePointFromClient=(x:number,y:number)=>{const box=stageRef.current?.container().getBoundingClientRect();if(!box)return null;return{x:(x-box.left)/stageSize.scale,y:(y-box.top)/stageSize.scale}};
  const targetAt=(x:number,y:number)=>{const p=stagePointFromClient(x,y),stage=stageRef.current;if(!p||!stage||p.x<0||p.y<0||p.x>ART_WIDTH||p.y>ART_HEIGHT)return null;const hit=stage.getIntersection({x:p.x*stageSize.scale,y:p.y*stageSize.scale});const id=hit?.id();return id&&objects.some(o=>o.id===id)?id:null};
- const startColorDrop=(event:React.PointerEvent<HTMLButtonElement>,nextColor:string)=>{
-  setColor(nextColor);const startX=event.clientX,startY=event.clientY,pointerId=event.pointerId;let active=false,timer=window.setTimeout(()=>{active=true;setDrop({color:nextColor,x:startX,y:startY,active:true,targetId:null});navigator.vibrate?.(15)},180);
+ const startColorDrop=(event:ReactPointerEvent<HTMLButtonElement>,nextColor:string)=>{
+  setColor(nextColor);const startX=event.clientX,startY=event.clientY,pointerId=event.pointerId;let active=false;let timer=window.setTimeout(()=>{active=true;setDrop({color:nextColor,x:startX,y:startY,active:true,targetId:null});navigator.vibrate?.(15)},180);
+  const cleanup=()=>{clearTimeout(timer);document.removeEventListener('pointermove',move);document.removeEventListener('pointerup',finish);document.removeEventListener('pointercancel',cancel);setDrop(null);setHoverId(null);dropCleanupRef.current=null};
   const move=(e:PointerEvent)=>{if(e.pointerId!==pointerId)return;const dx=e.clientX-startX,dy=e.clientY-startY;if(!active&&Math.abs(dx)>8&&Math.abs(dx)>Math.abs(dy)){cleanup();return}if(!active)return;e.preventDefault();const targetId=targetAt(e.clientX,e.clientY);setHoverId(targetId);setDrop({color:nextColor,x:e.clientX,y:e.clientY,active:true,targetId})};
   const finish=(e:PointerEvent)=>{if(e.pointerId!==pointerId)return;const targetId=active?targetAt(e.clientX,e.clientY):null;if(active&&targetId){pushHistory();updateObject(targetId,{fill:nextColor});setMessage('Color dropped! Drag another color to keep filling.');navigator.vibrate?.(22)}else if(active)setMessage('Drop the color directly onto a shape.');cleanup()};
   const cancel=()=>cleanup();
-  const cleanup=()=>{clearTimeout(timer);document.removeEventListener('pointermove',move);document.removeEventListener('pointerup',finish);document.removeEventListener('pointercancel',cancel);setDrop(null);setHoverId(null);dropCleanupRef.current=null};
   dropCleanupRef.current=cleanup;document.addEventListener('pointermove',move,{passive:false});document.addEventListener('pointerup',finish);document.addEventListener('pointercancel',cancel)
  };
 
  const renderObject=(item:ArtObject)=>{const common={id:item.id,ref:(node:Konva.Node|null)=>{nodeRefs.current[item.id]=node},x:item.x,y:item.y,width:item.width,height:item.height,rotation:item.rotation,offsetX:item.width/2,offsetY:item.height/2,draggable:tool==='select'&&!drop,onClick:()=>select(item.id),onTap:()=>select(item.id),onDragStart:pushHistory,onDragEnd:(e:any)=>updateObject(item.id,{x:e.target.x(),y:e.target.y()}),onTransformStart:pushHistory,onTransformEnd:(e:any)=>{const node=e.target as Konva.Node;updateObject(item.id,{x:node.x(),y:node.y(),rotation:node.rotation(),width:Math.max(50,node.width()*node.scaleX()),height:Math.max(50,node.height()*node.scaleY())});node.scale({x:1,y:1})},shadowColor:hoverId===item.id?'#7557ff':undefined,shadowBlur:hoverId===item.id?24:0,shadowOpacity:.8};
-  if(item.kind==='circle')return <Circle key={item.id}{...common} radius={item.width/2} fill={item.fill} opacity=.78 stroke={hoverId===item.id?'#7557ff':'#302b4a'} strokeWidth={hoverId===item.id?9:5}/>;
-  if(item.kind==='star')return <Star key={item.id}{...common} numPoints={5} innerRadius={item.width*.22} outerRadius={item.width*.5} fill={item.fill} stroke={hoverId===item.id?'#7557ff':'#302b4a'} strokeWidth={hoverId===item.id?9:5}/>;
-  if(item.kind==='sticker')return <Text key={item.id}{...common} text={item.sticker??'⭐'} fontSize={item.width*.8} align="center" verticalAlign="middle"/>;
-  return <Rect key={item.id}{...common} fill={item.fill} opacity=.78 stroke={hoverId===item.id?'#7557ff':'#302b4a'} strokeWidth={hoverId===item.id?9:5} cornerRadius={18}/>};
+  if(item.kind==='circle')return <Circle key={item.id} {...common} radius={item.width/2} fill={item.fill} opacity=.78 stroke={hoverId===item.id?'#7557ff':'#302b4a'} strokeWidth={hoverId===item.id?9:5}/>;
+  if(item.kind==='star')return <Star key={item.id} {...common} numPoints={5} innerRadius={item.width*.22} outerRadius={item.width*.5} fill={item.fill} stroke={hoverId===item.id?'#7557ff':'#302b4a'} strokeWidth={hoverId===item.id?9:5}/>;
+  if(item.kind==='sticker')return <Text key={item.id} {...common} text={item.sticker??'⭐'} fontSize={item.width*.8} align="center" verticalAlign="middle"/>;
+  return <Rect key={item.id} {...common} fill={item.fill} opacity=.78 stroke={hoverId===item.id?'#7557ff':'#302b4a'} strokeWidth={hoverId===item.id?9:5} cornerRadius={18}/>};
 
  return <main className="app-shell">
   <header className="topbar"><div className="brand">🎨 Color <b>Pop v2</b></div><div className="tool-group"><button className={tool==='select'?'active':''} onClick={()=>setTool('select')}>☝️ <span>Move</span></button><button className={tool==='brush'?'active':''} onClick={()=>{setTool('brush');select(null)}}>🖌️ <span>Draw</span></button><button className={tool==='eraser'?'active':''} onClick={()=>{setTool('eraser');select(null)}}>🧽 <span>Erase</span></button></div><div className="tool-group"><button disabled={!history.length} onClick={undo}>↩️</button><button disabled={!future.length} onClick={redo}>↪️</button><button disabled={!selectedId} onClick={deleteSelected}>🗑️</button></div></header>
