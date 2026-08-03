@@ -187,12 +187,25 @@ button { border: 0; color: inherit; font: inherit; touch-action: manipulation; -
 .actions-popover label { display: grid; gap: 7px; padding: 12px; color: #696176; font-size: 12px; font-weight: 800; }
 .actions-popover input { width: 100%; accent-color: #755cff; }
 .input-hints { display: grid; gap: 6px; margin: 2px 6px 5px; padding: 10px; border-radius: 13px; color: #746c81; font-size: 10px; font-weight: 750; background: #f1edf7; }
-.brush-popover { width: min(350px, calc(100vw - 24px)); flex-direction: column; gap: 2px; padding: 14px; }
+.brush-popover { width: min(620px, calc(100vw - 24px)); max-height: min(760px, calc(100dvh - 166px)); flex-direction: column; gap: 2px; padding: 14px; overflow-y: auto; }
 .brush-popover > header { display: flex; align-items: center; justify-content: space-between; gap: 14px; padding: 2px 2px 9px; }
 .brush-popover > header div { display: grid; gap: 2px; }
 .brush-popover > header strong { font-size: 16px; }
 .brush-popover > header small { color: #7a7287; font-size: 10px; font-weight: 700; }
 .brush-popover > header button { min-width: 34px; width: 34px; min-height: 34px; height: 34px; padding: 0; border-radius: 50%; color: #665d73; font-size: 22px; background: #eee9f5; }
+.brush-library { display: grid; gap: 12px; margin: 2px 0 12px; }
+.brush-group { display: grid; gap: 6px; }
+.brush-group h3 { margin: 0 4px; color: #756d81; font-size: 10px; font-weight: 900; letter-spacing: .08em; text-transform: uppercase; }
+.brush-grid { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 7px; }
+.brush-popover .brush-card { min-width: 0; min-height: 62px; grid-template-columns: 40px minmax(0, 1fr); place-items: center stretch; gap: 9px; padding: 8px; border: 1px solid #e8e2ef; border-radius: 16px; color: #51495e; text-align: left; background: #f7f4fa; transition: border-color .16s ease, background .16s ease, box-shadow .16s ease, transform .16s ease; }
+.brush-popover .brush-card:hover { border-color: #d6c9f4; background: #f1ebfb; transform: translateY(-1px); }
+.brush-popover .brush-card.is-selected { color: #4d398f; border-color: #a88cff; background: linear-gradient(145deg, #f0e9ff, #eef1ff); box-shadow: 0 7px 18px rgb(102 78 193 / 16%); }
+.brush-card__icon { width: 40px; height: 40px; display: grid; place-items: center; border-radius: 13px; font-size: 22px !important; line-height: 1; background: #eae4f2; }
+.brush-card.is-selected .brush-card__icon { color: white; background: linear-gradient(145deg, #755cff, #b760e9); box-shadow: 0 6px 14px rgb(117 92 255 / 24%); }
+.brush-card > span:last-child { min-width: 0; display: grid; gap: 2px; }
+.brush-card b { overflow: hidden; font-size: 12px; text-overflow: ellipsis; white-space: nowrap; }
+.brush-card small { overflow: hidden; color: #81798c; font-size: 8px; font-weight: 700; line-height: 1.25; text-overflow: ellipsis; white-space: nowrap; }
+.brush-card.is-selected small { color: #7768a5; }
 .brush-popover .line-mode-setting { min-width: 0; min-height: 64px; display: grid; grid-template-columns: 34px minmax(0, 1fr) auto; place-items: center stretch; gap: 10px; margin-bottom: 8px; padding: 9px 11px; border: 1px solid #ded7e9; border-radius: 16px; color: #51495e; text-align: left; background: #f3eff8; }
 .brush-popover .line-mode-setting:hover { background: #eee9f6; }
 .brush-popover .line-mode-setting.is-on { color: #ffffff; border-color: transparent; background: linear-gradient(135deg, #23b88b, #6874ef); box-shadow: 0 9px 22px rgb(52 153 137 / 22%); }
@@ -202,7 +215,7 @@ button { border: 0; color: inherit; font: inherit; touch-action: manipulation; -
 .line-mode-setting em { padding: 5px 7px; border-radius: 999px; font-size: 9px; font-style: normal; font-weight: 900; background: rgb(255 255 255 / 65%); }
 .line-mode-setting.is-on em { background: rgb(255 255 255 / 20%); }
 .brush-preview { height: 76px; display: grid; place-items: center; margin-bottom: 4px; overflow: hidden; border: 1px solid #e5dfee; border-radius: 17px; background-color: #fff; background-image: radial-gradient(#ddd5e8 1px, transparent 1px); background-size: 12px 12px; }
-.brush-preview span { min-width: 8px; min-height: 8px; border-radius: 50%; box-shadow: 0 5px 16px rgb(42 30 64 / 16%); transition: width .12s ease, height .12s ease, opacity .12s ease; }
+.brush-preview canvas { width: 100%; height: 76px; display: block; }
 .brush-popover label { display: grid; gap: 8px; padding: 9px 5px; }
 .brush-popover label > span { display: flex; align-items: center; justify-content: space-between; color: #494253; font-size: 12px; }
 .brush-popover label em { color: #755cff; font-size: 11px; font-style: normal; font-weight: 900; }
@@ -285,6 +298,9 @@ button { border: 0; color: inherit; font: inherit; touch-action: manipulation; -
   .palette__scroller { justify-content: flex-start; padding: 3px; }
   .swatch { width: 38px; height: 38px; }
   .shapes-popover, .sticker-popover, .brush-popover { bottom: 132px; }
+  .brush-popover { max-height: calc(100dvh - 146px); }
+  .brush-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+  .brush-popover .brush-card { min-height: 58px; }
   .library-backdrop { padding: 8px; }
   .library-panel { max-height: calc(100dvh - 16px); padding: 18px; border-radius: 25px; }
   .drawing-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 11px; }
@@ -381,7 +397,14 @@ button { border: 0; color: inherit; font: inherit; touch-action: manipulation; -
   .swatch { width: 34px; height: 34px; border-width: 3px; }
   .palette .swatch { touch-action: none; }
   .shapes-popover, .sticker-popover, .app-shell.is-left-handed .shapes-popover, .app-shell.is-left-handed .sticker-popover { left: auto; right: 140px; bottom: 50%; max-width: 280px; transform: translateY(50%); }
-  .brush-popover { left: 8px; right: auto; bottom: 50%; max-height: calc(100dvh - 12px); overflow-y: auto; transform: translateY(50%); }
+  .brush-popover { left: 8px; right: auto; bottom: 50%; width: min(560px, calc(100vw - 160px)); max-height: calc(100dvh - 12px); overflow-y: auto; transform: translateY(50%); }
+  .brush-library { gap: 7px; margin-bottom: 7px; }
+  .brush-grid { grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 5px; }
+  .brush-popover .brush-card { min-height: 48px; grid-template-columns: 32px minmax(0, 1fr); gap: 6px; padding: 5px 6px; border-radius: 13px; }
+  .brush-card__icon { width: 32px; height: 32px; border-radius: 10px; font-size: 17px !important; }
+  .brush-preview { height: 56px; }
+  .brush-preview canvas { height: 56px; }
+  .brush-popover label { padding-block: 5px; }
   .ios-focus-help { width: min(390px, calc(100vw - 24px)); grid-template-columns: 44px minmax(0, 1fr); gap: 8px 11px; padding: 16px; border-radius: 21px; }
   .ios-focus-help__icon { width: 44px; height: 44px; border-radius: 14px; font-size: 24px; }
   .ios-focus-help h2 { font-size: 19px; }

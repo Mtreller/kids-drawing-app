@@ -5,7 +5,8 @@ import {
 } from './drawing';
 import { loadCurrentArtwork, saveCurrentArtwork } from './storage';
 import { ToolIcon } from './icons';
-import { copyCanvas, createRegionMaskCache, drawMaskedLine, getRegionMask, restoreBaseLine, type RegionMaskCache } from './regionMask';
+import { brushPresets, drawBrushStroke, renderBrushStroke, type BrushType } from './brushes';
+import { copyCanvas, createRegionMaskCache, getRegionMask, restoreBaseLine, type RegionMaskCache } from './regionMask';
 
 const colors = [
   '#ff385d', '#ff6b6b', '#ff9f43', '#ffc93c', '#f7e967', '#4fdd89', '#21b66f',
@@ -91,6 +92,25 @@ function VerticalRange({ label, minimum, maximum, value, onChange }: {
   );
 }
 
+function BrushStrokePreview({ type, color, size, alpha }: { type: BrushType; color: string; size: number; alpha: number }) {
+  const previewRef = useRef<HTMLCanvasElement>(null);
+  useEffect(() => {
+    const canvas = previewRef.current;
+    const context = canvas?.getContext('2d');
+    if (!canvas || !context) return;
+    context.clearRect(0, 0, canvas.width, canvas.height);
+    renderBrushStroke(context, {
+      from: { x: 34, y: canvas.height / 2 + 5 },
+      to: { x: canvas.width - 34, y: canvas.height / 2 - 5 },
+      color,
+      size: Math.max(10, Math.min(54, size * .42)),
+      alpha,
+      type,
+    });
+  }, [alpha, color, size, type]);
+  return <canvas ref={previewRef} width="480" height="76" aria-label={`${type} brush preview`} />;
+}
+
 export function App() {
   const visibleRef = useRef<HTMLCanvasElement>(null);
   const backingRef = useRef<HTMLCanvasElement | null>(null);
@@ -133,6 +153,7 @@ export function App() {
   const [opacity, setOpacity] = useState(1);
   const [flow, setFlow] = useState(.8);
   const [smoothing, setSmoothing] = useState(.35);
+  const [brushType, setBrushType] = useState<BrushType>('round');
   const [stayInLines, setStayInLines] = useState(true);
   const [tolerance, setTolerance] = useState(32);
   const [objects, setObjects] = useState<ArtObject[]>([]);
@@ -164,18 +185,19 @@ export function App() {
   }, [leftHanded]);
   useEffect(() => {
     try {
-      const saved = JSON.parse(window.localStorage.getItem('color-pop-brush') ?? '{}') as { flow?: number; smoothing?: number; stayInLines?: boolean };
+      const saved = JSON.parse(window.localStorage.getItem('color-pop-brush') ?? '{}') as { flow?: number; smoothing?: number; stayInLines?: boolean; brushType?: BrushType };
       if (typeof saved.flow === 'number') setFlow(saved.flow);
       if (typeof saved.smoothing === 'number') setSmoothing(saved.smoothing);
+      if (saved.brushType && brushPresets.some((brush) => brush.id === saved.brushType)) setBrushType(saved.brushType);
       const saferDefaultApplied = window.localStorage.getItem('color-pop-stay-inside-default-v1') === 'true';
       if (saferDefaultApplied && typeof saved.stayInLines === 'boolean') setStayInLines(saved.stayInLines);
       else window.localStorage.setItem('color-pop-stay-inside-default-v1', 'true');
     } catch { /* Use the friendly defaults when settings cannot be restored. */ }
   }, []);
   useEffect(() => {
-    try { window.localStorage.setItem('color-pop-brush', JSON.stringify({ flow, smoothing, stayInLines })); }
+    try { window.localStorage.setItem('color-pop-brush', JSON.stringify({ flow, smoothing, stayInLines, brushType })); }
     catch { /* Settings still work for this session when storage is unavailable. */ }
-  }, [flow, smoothing, stayInLines]);
+  }, [brushType, flow, smoothing, stayInLines]);
   useEffect(() => {
     const fullscreenChanged = () => { if (!document.fullscreenElement) setFocusMode(false); };
     document.addEventListener('fullscreenchange', fullscreenChanged);
@@ -413,6 +435,16 @@ export function App() {
     if (entering && isIos && !isStandalone && !document.fullscreenElement) setShowIosFocusHelp(true);
   };
 
+  const selectBrush = (nextBrush: BrushType) => {
+    const preset = brushPresets.find((brush) => brush.id === nextBrush);
+    setBrushType(nextBrush);
+    setTool('brush');
+    setDrawingActive(false);
+    activeRegionMaskRef.current = null;
+    haptic(7);
+    setMessage(`${preset?.icon ?? '🖌️'} ${preset?.name ?? 'Brush'} selected`);
+  };
+
   const drawLine = (from: Point, to: Point, pointerType = 'touch', pressure = 1) => {
     const backing = backingRef.current;
     const context = backing?.getContext('2d');
@@ -427,23 +459,10 @@ export function App() {
       const scratch = scratchCanvasRef.current ?? document.createElement('canvas');
       scratchCanvasRef.current = scratch;
       restoreBaseLine({ backing, base, mask, scratch, from, to, lineWidth, alpha });
-    } else if (mask) {
+    } else {
       const scratch = scratchCanvasRef.current ?? document.createElement('canvas');
       scratchCanvasRef.current = scratch;
-      drawMaskedLine({ backing, mask, scratch, from, to, color, lineWidth, alpha });
-    } else {
-      context.save();
-      context.globalAlpha = alpha;
-      context.globalCompositeOperation = 'source-over';
-      context.strokeStyle = color;
-      context.lineWidth = lineWidth;
-      context.lineCap = 'round';
-      context.lineJoin = 'round';
-      context.beginPath();
-      context.moveTo(from.x, from.y);
-      context.lineTo(to.x, to.y);
-      context.stroke();
-      context.restore();
+      drawBrushStroke({ backing, mask, scratch, from, to, color, size: lineWidth, alpha, type: brushType });
     }
     strokeStarted.current = true;
     setRevision((value) => value + 1);
@@ -1249,7 +1268,7 @@ export function App() {
       </section>
 
       <nav className="tool-dock" aria-label="Drawing tools">
-        <IconButton icon={<ToolIcon name="brush" />} label="Brush" active={tool === 'brush'} onClick={() => chooseTool('brush')} />
+        <IconButton icon={<ToolIcon name="brush" />} label="Choose brush" active={tool === 'brush' || panel === 'brush'} onClick={() => { chooseTool('brush'); setPanel(panel === 'brush' ? null : 'brush'); }} />
         <IconButton icon={<ToolIcon name="magic" />} label="Stay inside lines" active={stayInLines} className="line-safe-tool" onClick={toggleStayInLines} />
         <IconButton icon={<ToolIcon name="eraser" />} label="Eraser" active={tool === 'eraser'} onClick={() => chooseTool('eraser')} />
         <IconButton icon={<ToolIcon name="fill" />} label="Fill bucket" active={tool === 'fill'} onClick={() => { chooseTool('fill'); notify('Tap an area, or drag a color onto it'); }} />
@@ -1260,11 +1279,28 @@ export function App() {
       </nav>
 
       {panel === 'brush' && <section className="popover brush-popover" role="dialog" aria-label="Brush settings">
-        <header><div><strong>Brush settings</strong><small>Fine-tune how paint feels</small></div><button type="button" aria-label="Close brush settings" onClick={() => setPanel(null)}>×</button></header>
+        <header><div><strong>Brush studio</strong><small>Pick a favorite or paint with magic</small></div><button type="button" aria-label="Close brush settings" onClick={() => setPanel(null)}>×</button></header>
+        <div className="brush-library" aria-label="Brush types">
+          {(['Favorites', 'Paint & texture', 'Magic'] as const).map((group) => <section className="brush-group" key={group}>
+            <h3>{group}</h3>
+            <div className="brush-grid">
+              {brushPresets.filter((brush) => brush.group === group).map((brush) => <button
+                key={brush.id}
+                className={`brush-card${brushType === brush.id ? ' is-selected' : ''}`}
+                type="button"
+                aria-pressed={brushType === brush.id}
+                onClick={() => selectBrush(brush.id)}
+              >
+                <span className="brush-card__icon" aria-hidden="true">{brush.icon}</span>
+                <span><b>{brush.name}</b><small>{brush.description}</small></span>
+              </button>)}
+            </div>
+          </section>)}
+        </div>
         <button className={`line-mode-setting${stayInLines ? ' is-on' : ''}`} type="button" aria-pressed={stayInLines} onClick={toggleStayInLines}>
           <ToolIcon name="magic" size={23} /><span><b>Stay Inside Lines</b><small>Paint only inside the section you touch</small></span><em>{stayInLines ? 'On' : 'Off'}</em>
         </button>
-        <div className="brush-preview" aria-hidden="true"><span style={{ width: Math.max(8, Math.min(72, brushSize)), height: Math.max(8, Math.min(72, brushSize)), backgroundColor: color, opacity: Math.max(.12, opacity * flow) }} /></div>
+        <div className="brush-preview"><BrushStrokePreview type={brushType} color={color} size={brushSize} alpha={Math.max(.12, opacity * flow)} /></div>
         <label><span><b>Size</b><em>{brushSize}px</em></span><input className="polished-range" style={rangeStyle(brushSize, BRUSH_MIN, BRUSH_MAX)} type="range" min={BRUSH_MIN} max={BRUSH_MAX} value={brushSize} onChange={(event) => setBrushSize(Number(event.target.value))} /></label>
         <label><span><b>Opacity</b><em>{Math.round(opacity * 100)}%</em></span><input className="polished-range" style={rangeStyle(opacity * 100, 10, 100)} type="range" min="10" max="100" value={opacity * 100} onChange={(event) => setOpacity(Number(event.target.value) / 100)} /></label>
         <label><span><b>Flow</b><em>{Math.round(flow * 100)}%</em></span><input className="polished-range" style={rangeStyle(flow * 100, 5, 100)} type="range" min="5" max="100" value={flow * 100} onChange={(event) => setFlow(Number(event.target.value) / 100)} /></label>
