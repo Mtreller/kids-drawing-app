@@ -260,8 +260,12 @@ button { border: 0; color: inherit; font: inherit; touch-action: manipulation; -
 .drawing-card small { padding: 0 3px; color: #81798c; font-size: 10px; font-weight: 700; }
 
 .palette { min-width: 0; padding: 10px max(14px, env(safe-area-inset-right)) max(10px, env(safe-area-inset-bottom)) max(14px, env(safe-area-inset-left)); border-top: 1px solid #e3ddeb; background: rgb(255 255 255 / 90%); }
-.palette__scroller { display: flex; justify-content: center; gap: 11px; overflow-x: auto; overscroll-behavior-x: contain; scrollbar-width: none; touch-action: pan-x; }
+.palette__scroller { display: flex; justify-content: flex-start; gap: 11px; overflow-x: auto; overscroll-behavior-x: contain; scrollbar-width: none; touch-action: pan-x; }
 .palette__scroller::-webkit-scrollbar { display: none; }
+.magic-brush-button { flex: 0 0 auto; width: 42px; height: 42px; padding: 0; overflow: hidden; border: 3px solid white; border-radius: 13px; background: linear-gradient(145deg, #f7f4fb, #eae4f3); box-shadow: 0 0 0 1px #d8d1df, 0 5px 12px rgb(44 33 64 / 14%); cursor: pointer; touch-action: pan-x; transition: transform .16s ease, box-shadow .16s ease; }
+.magic-brush-button canvas { width: 100%; height: 100%; display: block; pointer-events: none; }
+.magic-brush-button.is-selected { transform: translateY(-3px) scale(1.08); box-shadow: 0 0 0 3px #755cff, 0 8px 16px rgb(44 33 64 / 20%); }
+.magic-brush-divider { width: 1px; height: 34px; flex: 0 0 auto; align-self: center; margin-inline: 2px; background: #d8d1df; }
 .swatch { flex: 0 0 auto; width: 42px; height: 42px; border: 4px solid white; border-radius: 50%; box-shadow: 0 0 0 1px #d8d1df, 0 5px 12px rgb(44 33 64 / 14%); cursor: pointer; touch-action: pan-x; user-select: none; -webkit-user-select: none; -webkit-user-drag: none; -webkit-touch-callout: none; transition: transform .16s ease; }
 .swatch.is-selected { transform: translateY(-3px) scale(1.08); box-shadow: 0 0 0 3px #755cff, 0 8px 16px rgb(44 33 64 / 20%); }
 .swatch--picker { color: #716a7c; font-size: 24px; background: conic-gradient(#ff5c77, #ffd93d, #52d681, #3eb8f0, #755cff, #ff5c77); }
@@ -299,7 +303,7 @@ button { border: 0; color: inherit; font: inherit; touch-action: manipulation; -
   .tool-dock { gap: 3px; padding: 6px; }
   .tool-dock .icon-button { min-width: 39px; width: 39px; height: 43px; }
   .palette__scroller { justify-content: flex-start; padding: 3px; }
-  .swatch { width: 38px; height: 38px; }
+  .swatch, .magic-brush-button { width: 38px; height: 38px; }
   .shapes-popover, .sticker-popover, .brush-popover { bottom: 132px; }
   .brush-popover { max-height: calc(100dvh - 146px); }
   .brush-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); }
@@ -399,7 +403,8 @@ button { border: 0; color: inherit; font: inherit; touch-action: manipulation; -
   }
   .app-shell.is-left-handed .palette { right: max(4px, env(safe-area-inset-right)); left: auto; }
   .palette__scroller { height: 100%; flex-direction: column; justify-content: flex-start; gap: 7px; padding: 1px; overflow-x: hidden; overflow-y: auto; touch-action: none; pointer-events: auto; }
-  .swatch { width: 34px; height: 34px; border-width: 3px; }
+  .swatch, .magic-brush-button { width: 34px; height: 34px; border-width: 3px; }
+  .magic-brush-divider { width: 28px; height: 1px; margin: 2px 0; }
   .palette .swatch { touch-action: none; }
   .shapes-popover, .sticker-popover, .app-shell.is-left-handed .shapes-popover, .app-shell.is-left-handed .sticker-popover { left: auto; right: 140px; bottom: 50%; max-width: 280px; transform: translateY(50%); }
   .brush-popover { left: 8px; right: auto; bottom: 50%; width: min(560px, calc(100vw - 160px)); max-height: calc(100dvh - 12px); overflow-y: auto; transform: translateY(50%); }

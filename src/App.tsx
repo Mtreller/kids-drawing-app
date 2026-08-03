@@ -35,6 +35,7 @@ const stitchPages = [
   { title: 'Curious Stitch', file: 'curious-stitch.webp' },
   { title: 'Happy Stitch', file: 'happy-stitch.webp' },
 ].map((page) => ({ ...page, src: `${import.meta.env.BASE_URL}drawings/stitch/${page.file}` }));
+const magicBrushes = brushPresets.filter((brush) => brush.group === 'Magic');
 
 type DragColor = { color: string; x: number; y: number } | null;
 type Gesture = { distance: number; angle: number; width: number; height: number; rotation: number };
@@ -119,6 +120,25 @@ function BrushStrokePreview({ type, color, size, alpha }: { type: BrushType; col
     });
   }, [alpha, color, size, type]);
   return <canvas ref={previewRef} width="480" height="76" aria-label={`${type} brush preview`} />;
+}
+
+function MagicBrushPreview({ type, color }: { type: BrushType; color: string }) {
+  const previewRef = useRef<HTMLCanvasElement>(null);
+  useEffect(() => {
+    const canvas = previewRef.current;
+    const context = canvas?.getContext('2d');
+    if (!canvas || !context) return;
+    context.clearRect(0, 0, canvas.width, canvas.height);
+    renderBrushStroke(context, {
+      from: { x: 9, y: 39 },
+      to: { x: 45, y: 15 },
+      color,
+      size: 20,
+      alpha: 1,
+      type,
+    });
+  }, [color, type]);
+  return <canvas ref={previewRef} width="54" height="54" aria-hidden="true" />;
 }
 
 export function App() {
@@ -1367,8 +1387,17 @@ export function App() {
         </section>
       </div>}
 
-      <footer className="palette" aria-label="Color palette">
+      <footer className="palette" aria-label="Colors and magic brushes">
         <div className="palette__scroller">
+          {magicBrushes.map((brush) => <button
+            key={brush.id}
+            type="button"
+            className={`magic-brush-button${tool === 'brush' && brushType === brush.id ? ' is-selected' : ''}`}
+            aria-label={`Select ${brush.name} brush`}
+            title={`${brush.name} brush`}
+            onClick={() => selectBrush(brush.id)}
+          ><MagicBrushPreview type={brush.id} color={color} /></button>)}
+          <span className="magic-brush-divider" aria-hidden="true" />
           {colors.map((swatchColor) => <button key={swatchColor} type="button" className={`swatch${color === swatchColor ? ' is-selected' : ''}`} style={{ backgroundColor: swatchColor }} aria-label={`Select or drag color ${swatchColor}`} onPointerDown={(event) => startColorDrag(event, swatchColor)} />)}
           <label className="swatch swatch--picker" aria-label="Choose a custom color">＋<input type="color" value={color} onChange={(event) => setColor(event.target.value)} /></label>
         </div>
