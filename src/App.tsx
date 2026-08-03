@@ -1,7 +1,7 @@
-import { useCallback, useEffect, useRef, useState } from 'react';
+import { useCallback, useEffect, useLayoutEffect, useRef, useState } from 'react';
 import {
   ART_HEIGHT, ART_WIDTH, ArtObject, Point, Snapshot, Tool, canvasPoint,
-  drawObject, fillRegion, hitObject, newObject,
+  drawObject, fillRegion, hitObject, hitResizeHandle, newObject,
 } from './drawing';
 import { loadCurrentArtwork, saveCurrentArtwork } from './storage';
 
@@ -23,6 +23,7 @@ type DragColor = { color: string; x: number; y: number } | null;
 type Gesture = { distance: number; angle: number; width: number; height: number; rotation: number };
 type ViewGesture = { distance: number; center: Point; zoom: number; pan: Point };
 type MultiTouch = { startedAt: number; maxPointers: number; moved: boolean; initial: Map<number, Point> };
+type MouseResize = { id: string; distance: number; width: number; height: number };
 
 function IconButton({ icon, label, active = false, disabled = false, onClick }: {
   icon: string; label: string; active?: boolean; disabled?: boolean; onClick?: () => void;
@@ -37,6 +38,9 @@ function IconButton({ icon, label, active = false, disabled = false, onClick }: 
 export function App() {
   const visibleRef = useRef<HTMLCanvasElement>(null);
   const backingRef = useRef<HTMLCanvasElement | null>(null);
+  const clusterRef = useRef<HTMLDivElement>(null);
+  const sizeControlRef = useRef<HTMLElement>(null);
+  const opacityControlRef = useRef<HTMLElement>(null);
   const fileRef = useRef<HTMLInputElement>(null);
   const pointers = useRef(new Map<number, Point>());
   const screenPointers = useRef(new Map<number, Point>());
@@ -50,6 +54,7 @@ export function App() {
   const navigatingCanvas = useRef(false);
   const multiTouch = useRef<MultiTouch | null>(null);
   const mousePan = useRef<{ point: Point; pan: Point } | null>(null);
+  const mouseResize = useRef<MouseResize | null>(null);
   const spaceHeld = useRef(false);
   const hideTimer = useRef<number | null>(null);
   const objectChanged = useRef(false);
@@ -63,6 +68,8 @@ export function App() {
   const [opacity, setOpacity] = useState(1);
   const [tolerance, setTolerance] = useState(32);
   const [objects, setObjects] = useState<ArtObject[]>([]);
+  const [canvasSize, setCanvasSize] = useState({ width: ART_WIDTH, height: ART_HEIGHT });
+  const [displaySize, setDisplaySize] = useState<{ width: number; height: number } | null>(null);
   const [selectedId, setSelectedId] = useState<string | null>(null);
   const [panel, setPanel] = useState<'shapes' | 'stickers' | 'actions' | 'library' | null>(null);
   const [dragColor, setDragColor] = useState<DragColor>(null);
@@ -90,6 +97,27 @@ export function App() {
   }, []);
   useEffect(() => () => { if (hideTimer.current) window.clearTimeout(hideTimer.current); }, []);
 
+  useLayoutEffect(() => {
+    const cluster = clusterRef.current;
+    if (!cluster) return;
+    const measure = () => {
+      const controls = [sizeControlRef.current, opacityControlRef.current].filter((element) => element && element.offsetWidth > 0) as HTMLElement[];
+      const gap = Number.parseFloat(getComputedStyle(cluster).columnGap) || 0;
+      const availableWidth = Math.max(1, cluster.clientWidth - controls.reduce((sum, element) => sum + element.offsetWidth, 0) - gap * controls.length);
+      const availableHeight = Math.max(1, cluster.clientHeight);
+      const ratio = canvasSize.width / canvasSize.height;
+      const width = Math.min(availableWidth, availableHeight * ratio);
+      const height = width / ratio;
+      setDisplaySize((current) => current && Math.abs(current.width - width) < .5 && Math.abs(current.height - height) < .5 ? current : { width, height });
+    };
+    measure();
+    const observer = new ResizeObserver(measure);
+    observer.observe(cluster);
+    if (sizeControlRef.current) observer.observe(sizeControlRef.current);
+    if (opacityControlRef.current) observer.observe(opacityControlRef.current);
+    return () => observer.disconnect();
+  }, [canvasSize.width, canvasSize.height, focusMode]);
+
   const haptic = (pattern: number | number[] = 8) => {
     if ('vibrate' in navigator) navigator.vibrate(pattern);
   };
@@ -102,7 +130,7 @@ export function App() {
     if (!canvas || !backing) return;
     const context = canvas.getContext('2d');
     if (!context) return;
-    context.clearRect(0, 0, ART_WIDTH, ART_HEIGHT);
+    context.clearRect(0, 0, canvas.width, canvas.height);
     context.drawImage(backing, 0, 0);
     objectsRef.current.forEach((object) => drawObject(context, object, object.id === selectedId));
   }, [selectedId]);
@@ -112,6 +140,8 @@ export function App() {
   const snapshot = useCallback((): Snapshot => ({
     bitmap: backingRef.current?.toDataURL('image/png') ?? '',
     objects: objectsRef.current.map((object) => ({ ...object })),
+    width: backingRef.current?.width ?? ART_WIDTH,
+    height: backingRef.current?.height ?? ART_HEIGHT,
   }), []);
 
   const pushHistory = useCallback(() => {
@@ -128,9 +158,14 @@ export function App() {
     if (!backing) return;
     const image = new Image();
     image.onload = () => {
+      const width = next.width ?? image.naturalWidth ?? ART_WIDTH;
+      const height = next.height ?? image.naturalHeight ?? ART_HEIGHT;
+      backing.width = width;
+      backing.height = height;
       const context = backing.getContext('2d')!;
-      context.clearRect(0, 0, ART_WIDTH, ART_HEIGHT);
-      context.drawImage(image, 0, 0);
+      context.clearRect(0, 0, width, height);
+      context.drawImage(image, 0, 0, width, height);
+      setCanvasSize({ width, height });
       objectsRef.current = next.objects.map((object) => ({ ...object }));
       setObjects(objectsRef.current);
       setSelectedId(null);
@@ -148,7 +183,7 @@ export function App() {
     context.fillRect(0, 0, ART_WIDTH, ART_HEIGHT);
     backingRef.current = backing;
     objectsRef.current = [];
-    history.current = [{ bitmap: backing.toDataURL('image/png'), objects: [] }];
+    history.current = [{ bitmap: backing.toDataURL('image/png'), objects: [], width: ART_WIDTH, height: ART_HEIGHT }];
     refreshHistoryState();
     setRevision(1);
     void loadCurrentArtwork().then((saved) => {
@@ -319,10 +354,22 @@ export function App() {
     }
     if (tool === 'move') {
       if (pointers.current.size > 1 && selectedId) return;
+      const selected = objectsRef.current.find((object) => object.id === selectedId);
+      if (event.pointerType === 'mouse' && selected && hitResizeHandle(selected, point)) {
+        mouseResize.current = {
+          id: selected.id,
+          distance: Math.max(1, Math.hypot(point.x - selected.x, point.y - selected.y)),
+          width: selected.width,
+          height: selected.height,
+        };
+        dragOffset.current = null;
+        return;
+      }
       const target = hitObject(objectsRef.current, point);
       if (target) {
         setSelectedId(target.id);
         dragOffset.current = { x: point.x - target.x, y: point.y - target.y };
+        notify('Drag to move • drag a corner to resize');
       } else {
         setSelectedId(null);
         dragOffset.current = null;
@@ -383,6 +430,16 @@ export function App() {
     if (tool === 'move' && selectedId) {
       const selected = objectsRef.current.find((object) => object.id === selectedId);
       if (!selected) return;
+      if (mouseResize.current && event.pointerType === 'mouse') {
+        const scale = Math.max(.25, Math.min(5, Math.hypot(point.x - selected.x, point.y - selected.y) / mouseResize.current.distance));
+        updateObjects((items) => items.map((item) => item.id === mouseResize.current!.id ? {
+          ...item,
+          width: Math.max(70, mouseResize.current!.width * scale),
+          height: Math.max(70, mouseResize.current!.height * scale),
+        } : item));
+        objectChanged.current = true;
+        return;
+      }
       const active = [...pointers.current.values()];
       if (active.length >= 2) {
         const [a, b] = active;
@@ -402,8 +459,8 @@ export function App() {
       } else if (dragOffset.current) {
         updateObjects((items) => items.map((item) => item.id === selectedId ? {
           ...item,
-          x: Math.max(item.width / 2, Math.min(ART_WIDTH - item.width / 2, point.x - dragOffset.current!.x)),
-          y: Math.max(item.height / 2, Math.min(ART_HEIGHT - item.height / 2, point.y - dragOffset.current!.y)),
+          x: Math.max(item.width / 2, Math.min(canvasSize.width - item.width / 2, point.x - dragOffset.current!.x)),
+          y: Math.max(item.height / 2, Math.min(canvasSize.height - item.height / 2, point.y - dragOffset.current!.y)),
         } : item));
         objectChanged.current = true;
       }
@@ -441,6 +498,7 @@ export function App() {
       fillTap.current = null;
       fillTapMoved.current = false;
       dragOffset.current = null;
+      mouseResize.current = null;
       gesture.current = null;
       objectChanged.current = false;
       const touchGesture = multiTouch.current;
@@ -481,14 +539,14 @@ export function App() {
   };
 
   const addObject = (kind: ArtObject['kind'], sticker?: string) => {
-    const object = newObject(kind, color, sticker);
+    const object = newObject(kind, color, sticker, canvasSize.width, canvasSize.height);
     updateObjects((items) => [...items, object]);
     setSelectedId(object.id);
     setTool('move');
     setPanel(null);
     pushHistory();
     haptic(10);
-    notify('Use one finger to move, two fingers to resize and rotate');
+    notify('Drag to move • drag a corner or pinch to resize');
   };
 
   const deleteSelected = () => {
@@ -505,7 +563,7 @@ export function App() {
     if (!context) return;
     context.globalCompositeOperation = 'source-over';
     context.fillStyle = '#ffffff';
-    context.fillRect(0, 0, ART_WIDTH, ART_HEIGHT);
+    context.fillRect(0, 0, backingRef.current!.width, backingRef.current!.height);
     objectsRef.current = [];
     setObjects([]);
     setSelectedId(null);
@@ -515,21 +573,27 @@ export function App() {
   };
 
   const placeImage = (image: HTMLImageElement, successMessage: string) => {
-      const context = backingRef.current?.getContext('2d');
+      const backing = backingRef.current;
+      if (!backing) return;
+      const longestSide = Math.max(image.naturalWidth, image.naturalHeight);
+      const scale = longestSide > 1600 ? 1600 / longestSide : longestSide < 900 ? 900 / longestSide : 1;
+      const padding = 28;
+      const imageWidth = Math.max(1, Math.round(image.naturalWidth * scale));
+      const imageHeight = Math.max(1, Math.round(image.naturalHeight * scale));
+      const width = imageWidth + padding * 2;
+      const height = imageHeight + padding * 2;
+      backing.width = width;
+      backing.height = height;
+      const context = backing.getContext('2d');
       if (!context) return;
       context.globalCompositeOperation = 'source-over';
       context.fillStyle = '#fff';
-      context.fillRect(0, 0, ART_WIDTH, ART_HEIGHT);
-      const padding = 48;
-      const scale = Math.min((ART_WIDTH - padding * 2) / image.width, (ART_HEIGHT - padding * 2) / image.height);
-      const width = image.width * scale;
-      const height = image.height * scale;
-      const x = (ART_WIDTH - width) / 2;
-      const y = (ART_HEIGHT - height) / 2;
-      context.drawImage(image, x, y, width, height);
+      context.fillRect(0, 0, width, height);
+      context.drawImage(image, padding, padding, imageWidth, imageHeight);
       context.strokeStyle = '#171823';
-      context.lineWidth = 12;
-      context.strokeRect(x - 6, y - 6, width + 12, height + 12);
+      context.lineWidth = 10;
+      context.strokeRect(padding - 5, padding - 5, imageWidth + 10, imageHeight + 10);
+      setCanvasSize({ width, height });
       objectsRef.current = [];
       setObjects([]);
       setSelectedId(null);
@@ -559,7 +623,8 @@ export function App() {
 
   const save = () => {
     const output = document.createElement('canvas');
-    output.width = ART_WIDTH; output.height = ART_HEIGHT;
+    output.width = backingRef.current?.width ?? canvasSize.width;
+    output.height = backingRef.current?.height ?? canvasSize.height;
     const context = output.getContext('2d')!;
     context.drawImage(backingRef.current!, 0, 0);
     objectsRef.current.forEach((object) => drawObject(context, object));
@@ -638,6 +703,8 @@ export function App() {
     window.addEventListener('pointerup', up);
   };
 
+  const selectedObject = objects.find((object) => object.id === selectedId) ?? null;
+
   return (
     <main className={`app-shell${focusMode ? ' is-focus' : ''}${drawingActive ? ' is-drawing' : ''}${leftHanded ? ' is-left-handed' : ''}`}>
       <header className="topbar">
@@ -652,26 +719,32 @@ export function App() {
       </header>
 
       <section className="workspace" onWheel={wheelCanvas}>
-        <aside className="side-controls" aria-label="Brush size">
-          <span className="control-value">{brushSize}</span>
-          <input aria-label="Brush size" type="range" min="3" max="90" value={brushSize} onChange={(event) => setBrushSize(Number(event.target.value))} />
-          <span className="control-label">Size</span>
-        </aside>
-        <div className="canvas-stage" style={{ transform: `translate3d(${pan.x}px, ${pan.y}px, 0) scale(${zoom})` }}>
-        <div className="canvas-wrap">
-          <canvas
-            ref={visibleRef} width={ART_WIDTH} height={ART_HEIGHT} aria-label="Drawing canvas"
-            onPointerDown={pointerDown} onPointerMove={pointerMove} onPointerUp={pointerUp} onPointerCancel={pointerUp}
-            onDoubleClick={resetView} onContextMenu={(event) => event.preventDefault()}
-          />
-          {selectedId && <button className="delete-object" type="button" onClick={deleteSelected} aria-label="Delete selected object">×</button>}
+        <div className="canvas-stage">
+          <div className="canvas-cluster" ref={clusterRef}>
+            <aside className="side-controls" ref={sizeControlRef} aria-label="Brush size">
+              <span className="control-value">{brushSize}</span>
+              <input aria-label="Brush size" type="range" min="3" max="90" value={brushSize} onChange={(event) => setBrushSize(Number(event.target.value))} />
+              <span className="control-label">Size</span>
+            </aside>
+            <div className="canvas-wrap" style={{ '--page-ratio': canvasSize.width / canvasSize.height, width: displaySize?.width, height: displaySize?.height, transform: `translate3d(${pan.x}px, ${pan.y}px, 0) scale(${zoom})` } as React.CSSProperties}>
+              <canvas
+                ref={visibleRef} width={canvasSize.width} height={canvasSize.height} aria-label="Drawing canvas"
+                className={tool === 'move' ? 'is-move-tool' : ''}
+                onPointerDown={pointerDown} onPointerMove={pointerMove} onPointerUp={pointerUp} onPointerCancel={pointerUp}
+                onDoubleClick={resetView} onContextMenu={(event) => event.preventDefault()}
+              />
+              {selectedObject && <div className="selection-toolbar" aria-label="Selected object controls">
+                <span>{Math.round(selectedObject.width)} × {Math.round(selectedObject.height)}</span>
+                <button type="button" onClick={deleteSelected} aria-label="Delete selected object">×</button>
+              </div>}
+            </div>
+            <aside className="side-controls side-controls--right" ref={opacityControlRef} aria-label="Brush opacity">
+              <span className="control-value">{Math.round(opacity * 100)}%</span>
+              <input aria-label="Brush opacity" type="range" min="10" max="100" value={opacity * 100} onChange={(event) => setOpacity(Number(event.target.value) / 100)} />
+              <span className="control-label">Opacity</span>
+            </aside>
+          </div>
         </div>
-        </div>
-        <aside className="side-controls side-controls--right" aria-label="Brush opacity">
-          <span className="control-value">{Math.round(opacity * 100)}%</span>
-          <input aria-label="Brush opacity" type="range" min="10" max="100" value={opacity * 100} onChange={(event) => setOpacity(Number(event.target.value) / 100)} />
-          <span className="control-label">Opacity</span>
-        </aside>
         <div className="status-pill" role="status">{message}</div>
         <button className="zoom-reset" type="button" onClick={resetView} aria-label="Fit canvas to screen">{Math.round(zoom * 100)}%</button>
       </section>

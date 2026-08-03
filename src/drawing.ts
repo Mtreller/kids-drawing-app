@@ -15,13 +15,13 @@ export type ArtObject = {
   sticker?: string;
 };
 
-export type Snapshot = { bitmap: string; objects: ArtObject[] };
+export type Snapshot = { bitmap: string; objects: ArtObject[]; width?: number; height?: number };
 
 export function canvasPoint(canvas: HTMLCanvasElement, clientX: number, clientY: number): Point {
   const rect = canvas.getBoundingClientRect();
   return {
-    x: Math.max(0, Math.min(ART_WIDTH, (clientX - rect.left) * ART_WIDTH / rect.width)),
-    y: Math.max(0, Math.min(ART_HEIGHT, (clientY - rect.top) * ART_HEIGHT / rect.height)),
+    x: Math.max(0, Math.min(canvas.width, (clientX - rect.left) * canvas.width / rect.width)),
+    y: Math.max(0, Math.min(canvas.height, (clientY - rect.top) * canvas.height / rect.height)),
   };
 }
 
@@ -70,12 +70,38 @@ export function drawObject(context: CanvasRenderingContext2D, object: ArtObject,
     context.lineWidth = 7;
     context.strokeRect(-object.width / 2 - 12, -object.height / 2 - 12, object.width + 24, object.height + 24);
     context.setLineDash([]);
-    context.fillStyle = '#755cff';
-    context.beginPath();
-    context.arc(object.width / 2 + 12, object.height / 2 + 12, 13, 0, Math.PI * 2);
-    context.fill();
+    const handles = [
+      [-object.width / 2 - 12, -object.height / 2 - 12],
+      [object.width / 2 + 12, -object.height / 2 - 12],
+      [-object.width / 2 - 12, object.height / 2 + 12],
+      [object.width / 2 + 12, object.height / 2 + 12],
+    ];
+    handles.forEach(([x, y]) => {
+      context.fillStyle = '#ffffff';
+      context.beginPath();
+      context.arc(x, y, 18, 0, Math.PI * 2);
+      context.fill();
+      context.strokeStyle = '#755cff';
+      context.lineWidth = 8;
+      context.stroke();
+    });
   }
   context.restore();
+}
+
+export function hitResizeHandle(object: ArtObject, point: Point) {
+  const cos = Math.cos(-object.rotation);
+  const sin = Math.sin(-object.rotation);
+  const dx = point.x - object.x;
+  const dy = point.y - object.y;
+  const localX = dx * cos - dy * sin;
+  const localY = dx * sin + dy * cos;
+  const cornerX = object.width / 2 + 12;
+  const cornerY = object.height / 2 + 12;
+  return [
+    [-cornerX, -cornerY], [cornerX, -cornerY],
+    [-cornerX, cornerY], [cornerX, cornerY],
+  ].some(([x, y]) => Math.hypot(localX - x, localY - y) <= 34);
 }
 
 export function hitObject(objects: ArtObject[], point: Point) {
@@ -95,10 +121,12 @@ export function hitObject(objects: ArtObject[], point: Point) {
 export function fillRegion(canvas: HTMLCanvasElement, point: Point, color: string, tolerance = 32) {
   const context = canvas.getContext('2d', { willReadFrequently: true });
   if (!context) return false;
-  const image = context.getImageData(0, 0, ART_WIDTH, ART_HEIGHT);
-  const x = Math.floor(point.x);
-  const y = Math.floor(point.y);
-  const start = (y * ART_WIDTH + x) * 4;
+  const width = canvas.width;
+  const height = canvas.height;
+  const image = context.getImageData(0, 0, width, height);
+  const x = Math.max(0, Math.min(width - 1, Math.floor(point.x)));
+  const y = Math.max(0, Math.min(height - 1, Math.floor(point.y)));
+  const start = (y * width + x) * 4;
   const target = [image.data[start], image.data[start + 1], image.data[start + 2], image.data[start + 3]];
   const fill = hexToRgba(color);
   if (target.slice(0, 3).every((value, index) => Math.abs(value - fill[index]) < 3)) return false;
@@ -108,9 +136,9 @@ export function fillRegion(canvas: HTMLCanvasElement, point: Point, color: strin
     Math.abs(image.data[offset + 1] - target[1]) <= tolerance &&
     Math.abs(image.data[offset + 2] - target[2]) <= tolerance &&
     Math.abs(image.data[offset + 3] - target[3]) <= tolerance;
-  const visited = new Uint8Array(ART_WIDTH * ART_HEIGHT);
-  const queue = new Int32Array(ART_WIDTH * ART_HEIGHT);
-  const firstPixel = y * ART_WIDTH + x;
+  const visited = new Uint8Array(width * height);
+  const queue = new Int32Array(width * height);
+  const firstPixel = y * width + x;
   queue[0] = firstPixel;
   visited[firstPixel] = 1;
   let head = 0;
@@ -119,8 +147,8 @@ export function fillRegion(canvas: HTMLCanvasElement, point: Point, color: strin
 
   while (head < tail) {
     const pixel = queue[head++];
-    const cx = pixel % ART_WIDTH;
-    const cy = Math.floor(pixel / ART_WIDTH);
+    const cx = pixel % width;
+    const cy = Math.floor(pixel / width);
     const offset = pixel * 4;
     if (!matches(offset)) continue;
     image.data[offset] = fill[0];
@@ -129,10 +157,10 @@ export function fillRegion(canvas: HTMLCanvasElement, point: Point, color: strin
     image.data[offset + 3] = 255;
     changed += 1;
     const neighbors = [
-      cx < ART_WIDTH - 1 ? pixel + 1 : -1,
+      cx < width - 1 ? pixel + 1 : -1,
       cx > 0 ? pixel - 1 : -1,
-      cy < ART_HEIGHT - 1 ? pixel + ART_WIDTH : -1,
-      cy > 0 ? pixel - ART_WIDTH : -1,
+      cy < height - 1 ? pixel + width : -1,
+      cy > 0 ? pixel - width : -1,
     ];
     for (const neighbor of neighbors) {
       if (neighbor < 0 || visited[neighbor]) continue;
@@ -150,9 +178,9 @@ function hexToRgba(hex: string) {
   return [(value >> 16) & 255, (value >> 8) & 255, value & 255, 255];
 }
 
-export function newObject(kind: ArtObject['kind'], color: string, sticker?: string): ArtObject {
+export function newObject(kind: ArtObject['kind'], color: string, sticker?: string, canvasWidth = ART_WIDTH, canvasHeight = ART_HEIGHT): ArtObject {
   return {
-    id: crypto.randomUUID(), kind, x: ART_WIDTH / 2, y: ART_HEIGHT / 2,
+    id: crypto.randomUUID(), kind, x: canvasWidth / 2, y: canvasHeight / 2,
     width: kind === 'rectangle' ? 250 : 210, height: 210, rotation: 0, color, sticker,
   };
 }

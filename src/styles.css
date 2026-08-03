@@ -13,7 +13,8 @@ button { border: 0; color: inherit; font: inherit; -webkit-tap-highlight-color: 
 
 .app-shell {
   --bar-height: 70px;
-  min-height: 100dvh;
+  height: 100dvh;
+  min-height: 0;
   display: grid;
   grid-template-rows: var(--bar-height) minmax(0, 1fr) auto;
   background: linear-gradient(145deg, #f8f5fc, #eee9f7);
@@ -52,38 +53,51 @@ button { border: 0; color: inherit; font: inherit; -webkit-tap-highlight-color: 
 .gallery-button { grid-auto-flow: column; gap: 8px; padding: 0 16px; color: white; font-weight: 800; background: #26213b; }
 .library-button { grid-auto-flow: column; gap: 8px; padding: 0 16px; color: #6046c5; font-weight: 850; background: #eee8ff; }
 
-.workspace { position: relative; min-height: 0; display: grid; place-items: center; padding: 18px 74px 78px; overflow: hidden; }
-.canvas-stage { width: 100%; height: 100%; display: grid; place-items: center; transform-origin: center; will-change: transform; }
+.workspace { position: relative; min-height: 0; display: grid; place-items: center; padding: 18px 20px 78px; overflow: hidden; }
+.canvas-stage { width: 100%; height: 100%; min-width: 0; min-height: 0; display: grid; place-items: center; transform-origin: center; will-change: transform; }
+.canvas-cluster { width: 100%; height: 100%; min-width: 0; min-height: 0; display: flex; align-items: center; justify-content: center; gap: clamp(10px, 1.5vw, 20px); }
 .canvas-wrap {
+  --page-ratio: 1.333;
   position: relative;
-  width: min(100%, calc((100dvh - 190px) * 4 / 3), 1100px);
-  aspect-ratio: 4 / 3;
+  width: min(100%, 900px);
   height: auto;
-  max-height: 760px;
+  max-width: none;
+  max-height: none;
+  flex: 0 0 auto;
+  aspect-ratio: var(--page-ratio);
   overflow: hidden;
-  border-radius: 28px;
+  border-radius: clamp(18px, 2.2vw, 28px);
   background: white;
   box-shadow: 0 24px 70px rgb(65 49 92 / 18%), 0 0 0 1px rgb(61 44 88 / 8%);
   touch-action: none;
+  transform-origin: center;
+  will-change: transform;
 }
 .canvas-wrap canvas { display: block; width: 100%; height: 100%; cursor: crosshair; touch-action: none; }
-.delete-object { position: absolute; z-index: 5; top: 12px; right: 12px; width: 42px; height: 42px; border-radius: 50%; color: white; font-size: 28px; line-height: 1; background: #ff4969; box-shadow: 0 8px 20px rgb(255 73 105 / 35%); }
+.canvas-wrap canvas.is-move-tool { cursor: move; }
+.selection-toolbar { position: absolute; z-index: 5; top: 12px; right: 12px; display: flex; align-items: center; gap: 8px; padding: 6px 6px 6px 11px; border: 1px solid rgb(255 255 255 / 82%); border-radius: 999px; color: white; font-size: 11px; font-weight: 900; background: rgb(43 35 64 / 84%); box-shadow: 0 8px 24px rgb(34 25 53 / 28%); backdrop-filter: blur(14px); pointer-events: auto; }
+.selection-toolbar button { width: 30px; height: 30px; border-radius: 50%; color: white; font-size: 22px; line-height: 1; background: #ff4969; cursor: pointer; }
 
 .side-controls {
-  position: absolute;
+  position: static;
   z-index: 3;
-  left: max(12px, env(safe-area-inset-left));
-  top: 50%;
+  flex: 0 0 58px;
   display: flex;
   flex-direction: column;
   align-items: center;
-  gap: 10px;
-  transform: translateY(-60%);
+  gap: 8px;
+  width: 58px;
+  padding: 10px 6px;
+  border: 1px solid rgb(255 255 255 / 78%);
+  border-radius: 22px;
+  background: rgb(255 255 255 / 82%);
+  box-shadow: 0 12px 32px rgb(53 39 78 / 14%);
+  backdrop-filter: blur(18px);
+  transform: none;
 }
-.side-controls--right { right: max(12px, env(safe-area-inset-right)); left: auto; }
-.side-controls input[type="range"] { width: clamp(100px, 22vh, 180px); height: 22px; accent-color: #755cff; transform: rotate(-90deg); margin: 43px -40px; }
+.side-controls input[type="range"] { width: clamp(100px, 20vh, 165px); height: 24px; accent-color: #755cff; transform: rotate(-90deg); margin: 40px -42px; cursor: pointer; }
 .control-value { min-width: 46px; padding: 6px 8px; border-radius: 12px; color: white; font-size: 11px; font-weight: 900; text-align: center; background: #342e47; }
-.control-label { max-width: 52px; color: #766f82; font-size: 10px; font-weight: 800; text-align: center; }
+.control-label { max-width: 52px; color: #665e74; font-size: 10px; font-weight: 900; text-align: center; }
 .status-pill { position: absolute; z-index: 4; left: 50%; bottom: 16px; max-width: min(75%, 520px); padding: 9px 15px; overflow: hidden; border-radius: 999px; color: white; font-size: 12px; font-weight: 800; text-overflow: ellipsis; white-space: nowrap; background: rgb(37 32 57 / 84%); backdrop-filter: blur(12px); transform: translateX(-50%); pointer-events: none; }
 .zoom-reset { position: absolute; z-index: 5; left: max(14px, env(safe-area-inset-left)); bottom: 16px; min-width: 52px; height: 38px; padding: 0 10px; border-radius: 13px; color: #5f4ab5; font-size: 11px; font-weight: 900; background: rgb(255 255 255 / 90%); box-shadow: 0 7px 20px rgb(47 35 70 / 16%); backdrop-filter: blur(12px); }
 .focus-exit { position: fixed; z-index: 20; top: max(12px, env(safe-area-inset-top)); right: max(12px, env(safe-area-inset-right)); width: 44px; height: 44px; border-radius: 15px; color: white; font-size: 18px; font-weight: 900; background: rgb(37 32 57 / 78%); box-shadow: 0 9px 24px rgb(32 25 47 / 24%); backdrop-filter: blur(14px); }
@@ -95,8 +109,7 @@ button { border: 0; color: inherit; font: inherit; -webkit-tap-highlight-color: 
 .app-shell.is-drawing .topbar, .app-shell.is-drawing .palette, .app-shell.is-drawing .tool-dock, .app-shell.is-drawing .side-controls { opacity: 0; pointer-events: none; }
 .app-shell.is-drawing .tool-dock { transform: translate(-50%, 18px); }
 
-.app-shell.is-left-handed .side-controls:not(.side-controls--right) { right: max(12px, env(safe-area-inset-right)); left: auto; }
-.app-shell.is-left-handed .side-controls--right { right: auto; left: max(12px, env(safe-area-inset-left)); }
+.app-shell.is-left-handed .canvas-cluster { flex-direction: row-reverse; }
 .app-shell.is-left-handed .zoom-reset { right: max(14px, env(safe-area-inset-right)); left: auto; }
 .app-shell.is-left-handed .actions-popover { right: auto; left: 14px; }
 
@@ -168,11 +181,10 @@ button { border: 0; color: inherit; font: inherit; -webkit-tap-highlight-color: 
   .brand > span:last-child { display: none; }
   .gallery-button, .library-button { width: 44px; padding: 0; font-size: 0; }
   .gallery-button span, .library-button span { font-size: 20px; }
-  .workspace { padding: 14px 54px 76px; }
-  .canvas-wrap { width: min(100%, calc((100dvh - 175px) * 4 / 3)); }
+  .workspace { padding: 14px 6px 76px; }
   .canvas-wrap { border-radius: 22px; }
-  .side-controls { left: 6px; }
-  .side-controls--right { right: 6px; left: auto; }
+  .canvas-cluster { gap: 5px; }
+  .side-controls { width: 48px; flex-basis: 48px; padding-inline: 2px; }
   .side-controls .icon-button { min-width: 38px; width: 38px; height: 38px; }
   .tool-dock { bottom: 70px; }
   .tool-dock { gap: 5px; padding: 7px; }
@@ -182,8 +194,6 @@ button { border: 0; color: inherit; font: inherit; -webkit-tap-highlight-color: 
   .shapes-popover, .sticker-popover { bottom: 132px; }
   .status-pill { bottom: 8px; }
   .zoom-reset { left: 6px; bottom: 8px; min-width: 44px; height: 34px; }
-  .app-shell.is-left-handed .side-controls:not(.side-controls--right) { right: 6px; left: auto; }
-  .app-shell.is-left-handed .side-controls--right { right: auto; left: 6px; }
   .app-shell.is-left-handed .zoom-reset { right: 6px; left: auto; }
   .library-backdrop { padding: 8px; }
   .library-panel { max-height: calc(100dvh - 16px); padding: 18px; border-radius: 25px; }
@@ -194,8 +204,7 @@ button { border: 0; color: inherit; font: inherit; -webkit-tap-highlight-color: 
 
 @media (max-height: 540px) and (orientation: landscape) {
   .app-shell { --bar-height: 54px; }
-  .workspace { padding: 8px 60px 8px; }
-  .canvas-wrap { width: min(100%, calc((100dvh - 70px) * 4 / 3)); }
+  .workspace { padding: 8px 68px 8px 6px; }
   .tool-dock { left: auto; right: 12px; bottom: 50%; flex-direction: column; transform: translateY(50%); }
   .app-shell.is-left-handed .tool-dock { right: auto; left: 12px; }
   .app-shell.is-drawing .tool-dock { transform: translateY(50%) translateX(18px); }
