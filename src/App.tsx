@@ -45,6 +45,18 @@ type MouseResize = { id: string; distance: number; width: number; height: number
 type MouseRotate = { id: string; angle: number; rotation: number };
 type PageBase = { bitmap: string; width: number; height: number };
 type BrushCursor = { x: number; y: number } | null;
+type SafariFullscreenDocument = Document & {
+  webkitFullscreenElement?: Element | null;
+  webkitExitFullscreen?: () => void | Promise<void>;
+};
+type SafariFullscreenElement = HTMLElement & {
+  webkitRequestFullscreen?: () => void | Promise<void>;
+};
+
+const activeFullscreenElement = () => {
+  const safariDocument = document as SafariFullscreenDocument;
+  return document.fullscreenElement ?? safariDocument.webkitFullscreenElement ?? null;
+};
 
 const rangeStyle = (value: number, minimum: number, maximum: number) => ({
   '--range-progress': `${(value - minimum) / (maximum - minimum) * 100}%`,
@@ -229,9 +241,13 @@ export function App() {
     catch { /* Settings still work for this session when storage is unavailable. */ }
   }, [brushType, flow, smoothing, stayInLines]);
   useEffect(() => {
-    const fullscreenChanged = () => { if (!document.fullscreenElement) setFocusMode(false); };
+    const fullscreenChanged = () => { if (!activeFullscreenElement()) setFocusMode(false); };
     document.addEventListener('fullscreenchange', fullscreenChanged);
-    return () => document.removeEventListener('fullscreenchange', fullscreenChanged);
+    document.addEventListener('webkitfullscreenchange', fullscreenChanged);
+    return () => {
+      document.removeEventListener('fullscreenchange', fullscreenChanged);
+      document.removeEventListener('webkitfullscreenchange', fullscreenChanged);
+    };
   }, []);
   useEffect(() => () => { if (hideTimer.current) window.clearTimeout(hideTimer.current); }, []);
 
@@ -458,11 +474,28 @@ export function App() {
     const navigatorWithStandalone = navigator as Navigator & { standalone?: boolean };
     const isIos = /iPad|iPhone|iPod/.test(navigator.userAgent) || (navigator.platform === 'MacIntel' && navigator.maxTouchPoints > 1);
     const isStandalone = navigatorWithStandalone.standalone === true || window.matchMedia('(display-mode: standalone), (display-mode: fullscreen)').matches;
+    const fullscreenTarget = document.documentElement as SafariFullscreenElement;
+    const safariDocument = document as SafariFullscreenDocument;
     try {
-      if (entering && !document.fullscreenElement && document.documentElement.requestFullscreen) await document.documentElement.requestFullscreen();
-      if (!entering && document.fullscreenElement && document.exitFullscreen) await document.exitFullscreen();
-    } catch { /* iOS Safari does not offer arbitrary-page fullscreen; the Home Screen app does. */ }
-    if (entering && isIos && !isStandalone && !document.fullscreenElement) setShowIosFocusHelp(true);
+      if (entering && !activeFullscreenElement()) {
+        if (fullscreenTarget.requestFullscreen) await fullscreenTarget.requestFullscreen({ navigationUI: 'hide' });
+        else if (fullscreenTarget.webkitRequestFullscreen) await fullscreenTarget.webkitRequestFullscreen();
+      } else if (!entering && activeFullscreenElement()) {
+        if (document.exitFullscreen) await document.exitFullscreen();
+        else if (safariDocument.webkitExitFullscreen) await safariDocument.webkitExitFullscreen();
+      }
+    } catch {
+      try {
+        if (entering && !activeFullscreenElement()) {
+          if (fullscreenTarget.requestFullscreen) await fullscreenTarget.requestFullscreen();
+          else if (fullscreenTarget.webkitRequestFullscreen) await fullscreenTarget.webkitRequestFullscreen();
+        }
+      } catch { /* Older iPhone Safari requires the Home Screen app for webpage fullscreen. */ }
+    }
+    await new Promise<void>((resolve) => requestAnimationFrame(() => resolve()));
+    const fullscreenActive = Boolean(activeFullscreenElement());
+    if (entering && fullscreenActive) notify('Full screen on');
+    if (entering && isIos && !isStandalone && !fullscreenActive) setShowIosFocusHelp(true);
   };
 
   const selectBrush = (nextBrush: BrushType) => {

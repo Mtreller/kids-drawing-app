@@ -5,6 +5,7 @@
   "start_url": "/kids-drawing-app/",
   "scope": "/kids-drawing-app/",
   "display": "standalone",
+  "display_override": ["fullscreen", "standalone"],
   "orientation": "any",
   "background_color": "#f7f2ff",
   "theme_color": "#7557ff",
