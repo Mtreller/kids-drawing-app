@@ -93,6 +93,23 @@ export function drawObject(context: CanvasRenderingContext2D, object: ArtObject,
       context.lineWidth = 8;
       context.stroke();
     });
+    const rotateY = -object.height / 2 - 72;
+    context.strokeStyle = '#755cff';
+    context.lineWidth = 7;
+    context.beginPath();
+    context.moveTo(0, -object.height / 2 - 12);
+    context.lineTo(0, rotateY + 18);
+    context.stroke();
+    context.fillStyle = '#ffffff';
+    context.beginPath();
+    context.arc(0, rotateY, 20, 0, Math.PI * 2);
+    context.fill();
+    context.stroke();
+    context.fillStyle = '#755cff';
+    context.font = '900 22px system-ui';
+    context.textAlign = 'center';
+    context.textBaseline = 'middle';
+    context.fillText('↻', 0, rotateY + 1);
   }
   context.restore();
 }
@@ -110,6 +127,16 @@ export function hitResizeHandle(object: ArtObject, point: Point) {
     [-cornerX, -cornerY], [cornerX, -cornerY],
     [-cornerX, cornerY], [cornerX, cornerY],
   ].some(([x, y]) => Math.hypot(localX - x, localY - y) <= 34);
+}
+
+export function hitRotateHandle(object: ArtObject, point: Point) {
+  const cos = Math.cos(-object.rotation);
+  const sin = Math.sin(-object.rotation);
+  const dx = point.x - object.x;
+  const dy = point.y - object.y;
+  const localX = dx * cos - dy * sin;
+  const localY = dx * sin + dy * cos;
+  return Math.hypot(localX, localY + object.height / 2 + 72) <= 38;
 }
 
 export function hitObject(objects: ArtObject[], point: Point) {

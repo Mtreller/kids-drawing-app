@@ -1,7 +1,7 @@
 import { type CSSProperties, type ReactNode, useCallback, useEffect, useLayoutEffect, useRef, useState } from 'react';
 import {
   ART_HEIGHT, ART_WIDTH, ArtObject, Point, Snapshot, Tool, canvasPoint,
-  drawObject, fillRegion, hitObject, hitResizeHandle, newObject,
+  drawObject, fillRegion, hitObject, hitResizeHandle, hitRotateHandle, newObject,
 } from './drawing';
 import { loadCurrentArtwork, saveCurrentArtwork } from './storage';
 import { ToolIcon } from './icons';
@@ -26,12 +26,15 @@ type Gesture = { distance: number; angle: number; width: number; height: number;
 type ViewGesture = { distance: number; center: Point; zoom: number; pan: Point };
 type MultiTouch = { startedAt: number; maxPointers: number; moved: boolean; initial: Map<number, Point> };
 type MouseResize = { id: string; distance: number; width: number; height: number };
+type MouseRotate = { id: string; angle: number; rotation: number };
 type PageBase = { bitmap: string; width: number; height: number };
 type BrushCursor = { x: number; y: number } | null;
 
 const rangeStyle = (value: number, minimum: number, maximum: number) => ({
   '--range-progress': `${(value - minimum) / (maximum - minimum) * 100}%`,
 } as CSSProperties);
+const BRUSH_MIN = 3;
+const BRUSH_MAX = 240;
 
 function IconButton({ icon, label, active = false, disabled = false, className = '', onClick }: {
   icon: ReactNode; label: string; active?: boolean; disabled?: boolean; className?: string; onClick?: () => void;
@@ -104,6 +107,7 @@ export function App() {
   const multiTouch = useRef<MultiTouch | null>(null);
   const mousePan = useRef<{ point: Point; pan: Point } | null>(null);
   const mouseResize = useRef<MouseResize | null>(null);
+  const mouseRotate = useRef<MouseRotate | null>(null);
   const spaceHeld = useRef(false);
   const hideTimer = useRef<number | null>(null);
   const objectChanged = useRef(false);
@@ -556,6 +560,17 @@ export function App() {
     if (tool === 'move') {
       if (pointers.current.size > 1 && selectedId) return;
       const selected = objectsRef.current.find((object) => object.id === selectedId);
+      if (event.pointerType === 'mouse' && selected && hitRotateHandle(selected, point)) {
+        mouseRotate.current = {
+          id: selected.id,
+          angle: Math.atan2(point.y - selected.y, point.x - selected.x),
+          rotation: selected.rotation,
+        };
+        mouseResize.current = null;
+        dragOffset.current = null;
+        notify('Drag around the object to rotate');
+        return;
+      }
       if (event.pointerType === 'mouse' && selected && hitResizeHandle(selected, point)) {
         mouseResize.current = {
           id: selected.id,
@@ -570,7 +585,7 @@ export function App() {
       if (target) {
         setSelectedId(target.id);
         dragOffset.current = { x: point.x - target.x, y: point.y - target.y };
-        notify('Drag to move • drag a corner to resize');
+        notify('Move • corner resize • top handle rotates • two-finger twist');
       } else {
         setSelectedId(null);
         dragOffset.current = null;
@@ -651,6 +666,15 @@ export function App() {
     if (tool === 'move' && selectedId) {
       const selected = objectsRef.current.find((object) => object.id === selectedId);
       if (!selected) return;
+      if (mouseRotate.current && event.pointerType === 'mouse') {
+        const angle = Math.atan2(point.y - selected.y, point.x - selected.x);
+        updateObjects((items) => items.map((item) => item.id === mouseRotate.current!.id ? {
+          ...item,
+          rotation: mouseRotate.current!.rotation + angle - mouseRotate.current!.angle,
+        } : item));
+        objectChanged.current = true;
+        return;
+      }
       if (mouseResize.current && event.pointerType === 'mouse') {
         const scale = Math.max(.25, Math.min(5, Math.hypot(point.x - selected.x, point.y - selected.y) / mouseResize.current.distance));
         updateObjects((items) => items.map((item) => item.id === mouseResize.current!.id ? {
@@ -727,6 +751,7 @@ export function App() {
       fillTapMoved.current = false;
       dragOffset.current = null;
       mouseResize.current = null;
+      mouseRotate.current = null;
       gesture.current = null;
       activeRegionMaskRef.current = null;
       objectChanged.current = false;
@@ -776,7 +801,15 @@ export function App() {
     setPanel(null);
     pushHistory();
     haptic(10);
-    notify('Drag to move • drag a corner or pinch to resize');
+    notify('Move • resize corners • rotate the top handle or twist');
+  };
+
+  const rotateSelected = () => {
+    if (!selectedId) return;
+    updateObjects((items) => items.map((item) => item.id === selectedId ? { ...item, rotation: item.rotation + Math.PI / 12 } : item));
+    pushHistory();
+    haptic(7);
+    notify('Object rotated 15°');
   };
 
   const deleteSelected = () => {
@@ -918,8 +951,8 @@ export function App() {
       else if (key === 'e') chooseTool('eraser');
       else if (key === 'f') chooseTool('fill');
       else if (key === 'v') chooseTool('move');
-      else if (key === '[') setBrushSize((value) => Math.max(3, value - 3));
-      else if (key === ']') setBrushSize((value) => Math.min(90, value + 3));
+      else if (key === '[') setBrushSize((value) => Math.max(BRUSH_MIN, value - 3));
+      else if (key === ']') setBrushSize((value) => Math.min(BRUSH_MAX, value + 3));
       else if (key === '0') resetView();
       else if (key === 'r') resetPage();
       else if (key === 'm') toggleStayInLines();
@@ -990,7 +1023,7 @@ export function App() {
         <div className="topbar__actions">
           <IconButton icon="↶" label="Undo" disabled={!historyState.undo} onClick={undo} />
           <IconButton icon="↷" label="Redo" disabled={!historyState.redo} onClick={redo} />
-          <IconButton icon="⛶" label="Enter focus mode" active={focusMode} onClick={() => void toggleFocusMode()} />
+          <IconButton icon="⛶" label={focusMode ? 'Exit focus mode' : 'Enter focus mode'} active={focusMode} onClick={() => void toggleFocusMode()} />
           <button className="library-button" type="button" onClick={() => setPanel('library')}><span aria-hidden="true">▦</span><b>Drawings</b></button>
           <button className="gallery-button" type="button" onClick={() => setPanel(panel === 'actions' ? null : 'actions')}><span aria-hidden="true">•••</span><b>Actions</b></button>
         </div>
@@ -1002,7 +1035,7 @@ export function App() {
             <aside className="side-controls" ref={sizeControlRef} aria-label="Brush size">
               <span className="control-icon"><ToolIcon name="brush" size={17} /></span>
               <button className="control-value" type="button" aria-label="Open brush settings" onClick={() => setPanel(panel === 'brush' ? null : 'brush')}>{brushSize}<small>px</small></button>
-              <VerticalRange label="Brush size" minimum={3} maximum={90} value={brushSize} onChange={setBrushSize} />
+              <VerticalRange label="Brush size" minimum={BRUSH_MIN} maximum={BRUSH_MAX} value={brushSize} onChange={setBrushSize} />
               <span className="control-label">Size</span>
             </aside>
             <div className="canvas-wrap" style={{ '--page-ratio': canvasSize.width / canvasSize.height, width: displaySize?.width, height: displaySize?.height, transform: `translate3d(${pan.x}px, ${pan.y}px, 0) scale(${zoom})` } as React.CSSProperties}>
@@ -1027,8 +1060,9 @@ export function App() {
               />}
               {stayInLines && <div className="line-mode-badge"><ToolIcon name="magic" size={16} /><span>Stay Inside Lines</span></div>}
               {selectedObject && <div className="selection-toolbar" aria-label="Selected object controls">
-                <span>{Math.round(selectedObject.width)} × {Math.round(selectedObject.height)}</span>
-                <button type="button" onClick={deleteSelected} aria-label="Delete selected object">×</button>
+                <span>{Math.round(selectedObject.width)} × {Math.round(selectedObject.height)} • {Math.round(selectedObject.rotation * 180 / Math.PI)}°</span>
+                <button className="rotate-selection" type="button" onClick={rotateSelected} aria-label="Rotate selected object 15 degrees">↻</button>
+                <button className="delete-selection" type="button" onClick={deleteSelected} aria-label="Delete selected object">×</button>
               </div>}
             </div>
             <aside className="side-controls side-controls--right" ref={opacityControlRef} aria-label="Brush opacity">
@@ -1042,8 +1076,6 @@ export function App() {
         <div className="status-pill" role="status">{message}</div>
         <button className="zoom-reset" type="button" onClick={resetView} aria-label="Fit canvas to screen">{Math.round(zoom * 100)}%</button>
       </section>
-
-      {focusMode && <button className="focus-exit" type="button" onClick={() => void toggleFocusMode()} aria-label="Exit focus mode">✕</button>}
 
       <nav className="tool-dock" aria-label="Drawing tools">
         <IconButton icon={<ToolIcon name="brush" />} label="Brush" active={tool === 'brush'} onClick={() => chooseTool('brush')} />
@@ -1062,7 +1094,7 @@ export function App() {
           <ToolIcon name="magic" size={23} /><span><b>Stay Inside Lines</b><small>Paint only inside the section you touch</small></span><em>{stayInLines ? 'On' : 'Off'}</em>
         </button>
         <div className="brush-preview" aria-hidden="true"><span style={{ width: Math.max(8, Math.min(72, brushSize)), height: Math.max(8, Math.min(72, brushSize)), backgroundColor: color, opacity: Math.max(.12, opacity * flow) }} /></div>
-        <label><span><b>Size</b><em>{brushSize}px</em></span><input className="polished-range" style={rangeStyle(brushSize, 3, 90)} type="range" min="3" max="90" value={brushSize} onChange={(event) => setBrushSize(Number(event.target.value))} /></label>
+        <label><span><b>Size</b><em>{brushSize}px</em></span><input className="polished-range" style={rangeStyle(brushSize, BRUSH_MIN, BRUSH_MAX)} type="range" min={BRUSH_MIN} max={BRUSH_MAX} value={brushSize} onChange={(event) => setBrushSize(Number(event.target.value))} /></label>
         <label><span><b>Opacity</b><em>{Math.round(opacity * 100)}%</em></span><input className="polished-range" style={rangeStyle(opacity * 100, 10, 100)} type="range" min="10" max="100" value={opacity * 100} onChange={(event) => setOpacity(Number(event.target.value) / 100)} /></label>
         <label><span><b>Flow</b><em>{Math.round(flow * 100)}%</em></span><input className="polished-range" style={rangeStyle(flow * 100, 5, 100)} type="range" min="5" max="100" value={flow * 100} onChange={(event) => setFlow(Number(event.target.value) / 100)} /></label>
         <label><span><b>Smoothing</b><em>{Math.round(smoothing * 100)}%</em></span><input className="polished-range" style={rangeStyle(smoothing * 100, 0, 90)} type="range" min="0" max="90" value={smoothing * 100} onChange={(event) => setSmoothing(Number(event.target.value) / 100)} /></label>

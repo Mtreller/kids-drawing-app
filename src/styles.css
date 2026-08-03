@@ -83,7 +83,9 @@ button { border: 0; color: inherit; font: inherit; -webkit-tap-highlight-color: 
 .brush-size-outline.is-eraser { border-style: dashed; background: rgb(255 255 255 / 20%); }
 @keyframes fill-guide-pulse { from { filter: drop-shadow(0 0 2px rgb(117 92 255 / 36%)); } to { filter: drop-shadow(0 0 6px rgb(117 92 255 / 62%)); } }
 .selection-toolbar { position: absolute; z-index: 5; top: 12px; right: 12px; display: flex; align-items: center; gap: 8px; padding: 6px 6px 6px 11px; border: 1px solid rgb(255 255 255 / 82%); border-radius: 999px; color: white; font-size: 11px; font-weight: 900; background: rgb(43 35 64 / 84%); box-shadow: 0 8px 24px rgb(34 25 53 / 28%); backdrop-filter: blur(14px); pointer-events: auto; }
-.selection-toolbar button { width: 30px; height: 30px; border-radius: 50%; color: white; font-size: 22px; line-height: 1; background: #ff4969; cursor: pointer; }
+.selection-toolbar button { width: 30px; height: 30px; border-radius: 50%; color: white; font-size: 19px; line-height: 1; cursor: pointer; }
+.selection-toolbar .rotate-selection { background: #755cff; }
+.selection-toolbar .delete-selection { font-size: 22px; background: #ff4969; }
 .line-mode-badge { position: absolute; z-index: 4; top: 12px; left: 12px; display: flex; align-items: center; gap: 7px; padding: 8px 11px; border: 1px solid rgb(255 255 255 / 82%); border-radius: 999px; color: white; font-size: 10px; font-weight: 900; background: linear-gradient(135deg, rgb(38 183 139 / 92%), rgb(91 104 239 / 92%)); box-shadow: 0 8px 24px rgb(38 106 106 / 22%); backdrop-filter: blur(14px); pointer-events: none; }
 
 .side-controls {
@@ -135,14 +137,13 @@ button { border: 0; color: inherit; font: inherit; -webkit-tap-highlight-color: 
 .polished-range:focus-visible { box-shadow: 0 0 0 4px rgb(117 92 255 / 20%); }
 .status-pill { position: absolute; z-index: 4; left: 50%; bottom: 16px; max-width: min(75%, 520px); padding: 9px 15px; overflow: hidden; border-radius: 999px; color: white; font-size: 12px; font-weight: 800; text-overflow: ellipsis; white-space: nowrap; background: rgb(37 32 57 / 84%); backdrop-filter: blur(12px); transform: translateX(-50%); pointer-events: none; }
 .zoom-reset { position: absolute; z-index: 5; left: max(14px, env(safe-area-inset-left)); bottom: 16px; min-width: 52px; height: 38px; padding: 0 10px; border-radius: 13px; color: #5f4ab5; font-size: 11px; font-weight: 900; background: rgb(255 255 255 / 90%); box-shadow: 0 7px 20px rgb(47 35 70 / 16%); backdrop-filter: blur(12px); }
-.focus-exit { position: fixed; z-index: 20; top: max(12px, env(safe-area-inset-top)); right: max(12px, env(safe-area-inset-right)); width: 44px; height: 44px; border-radius: 15px; color: white; font-size: 18px; font-weight: 900; background: rgb(37 32 57 / 78%); box-shadow: 0 9px 24px rgb(32 25 47 / 24%); backdrop-filter: blur(14px); }
-
-.app-shell.is-focus { grid-template-rows: 0 minmax(0, 1fr) 0; }
-.app-shell.is-focus .topbar, .app-shell.is-focus .palette { visibility: hidden; overflow: hidden; padding-block: 0; border: 0; opacity: 0; pointer-events: none; }
-.app-shell.is-focus .workspace { padding-top: max(16px, env(safe-area-inset-top)); padding-bottom: max(82px, env(safe-area-inset-bottom)); }
+.app-shell.is-focus { grid-template-rows: var(--bar-height) minmax(0, 1fr) 0; }
+.app-shell.is-focus .palette { visibility: hidden; overflow: hidden; padding-block: 0; border: 0; opacity: 0; pointer-events: none; }
+.app-shell.is-focus .workspace { padding-top: 12px; padding-bottom: max(82px, env(safe-area-inset-bottom)); }
 .app-shell.is-focus .tool-dock { bottom: max(18px, env(safe-area-inset-bottom)); }
 .app-shell.is-drawing .topbar, .app-shell.is-drawing .palette, .app-shell.is-drawing .tool-dock, .app-shell.is-drawing .side-controls { opacity: 0; pointer-events: none; }
 .app-shell.is-drawing .tool-dock { transform: translate(-50%, 18px); }
+.app-shell.is-focus.is-drawing .topbar { opacity: 1; pointer-events: auto; }
 
 .app-shell.is-left-handed .canvas-cluster { flex-direction: row-reverse; }
 .app-shell.is-left-handed .zoom-reset { right: max(14px, env(safe-area-inset-right)); left: auto; }
