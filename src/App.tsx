@@ -5,7 +5,7 @@ import {
 } from './drawing';
 import { loadCurrentArtwork, saveCurrentArtwork } from './storage';
 import { ToolIcon } from './icons';
-import { copyCanvas, createRegionMaskCache, drawMaskedLine, getRegionMask, type RegionMaskCache } from './regionMask';
+import { copyCanvas, createRegionMaskCache, drawMaskedLine, getRegionMask, restoreBaseLine, type RegionMaskCache } from './regionMask';
 
 const colors = [
   '#ff385d', '#ff6b6b', '#ff9f43', '#ffc93c', '#f7e967', '#4fdd89', '#21b66f',
@@ -39,6 +39,47 @@ function IconButton({ icon, label, active = false, disabled = false, className =
     <button className={`icon-button${active ? ' is-active' : ''}${className ? ` ${className}` : ''}`} type="button" aria-label={label} title={label} disabled={disabled} onClick={onClick}>
       <span aria-hidden="true">{icon}</span>
     </button>
+  );
+}
+
+function VerticalRange({ label, minimum, maximum, value, onChange }: {
+  label: string;
+  minimum: number;
+  maximum: number;
+  value: number;
+  onChange: (value: number) => void;
+}) {
+  const updateFromPointer = (event: React.PointerEvent<HTMLDivElement>) => {
+    const rect = event.currentTarget.getBoundingClientRect();
+    const progress = 1 - Math.max(0, Math.min(1, (event.clientY - rect.top) / rect.height));
+    onChange(Math.round(minimum + progress * (maximum - minimum)));
+  };
+  return (
+    <div
+      className="vertical-range-wrap"
+      onPointerDown={(event) => {
+        if (event.pointerType === 'mouse' && event.button !== 0) return;
+        event.preventDefault();
+        event.currentTarget.querySelector('input')?.focus({ preventScroll: true });
+        event.currentTarget.setPointerCapture(event.pointerId);
+        updateFromPointer(event);
+      }}
+      onPointerMove={(event) => {
+        if (event.currentTarget.hasPointerCapture(event.pointerId)) updateFromPointer(event);
+      }}
+      onPointerUp={updateFromPointer}
+    >
+      <input
+        className="polished-range"
+        style={rangeStyle(value, minimum, maximum)}
+        aria-label={label}
+        type="range"
+        min={minimum}
+        max={maximum}
+        value={value}
+        onChange={(event) => onChange(Number(event.target.value))}
+      />
+    </div>
   );
 }
 
@@ -320,14 +361,20 @@ export function App() {
     const lineWidth = brushSize * pressureScale;
     const alpha = Math.max(.03, opacity * flow);
     const mask = stayInLines ? activeRegionMaskRef.current : null;
-    if (mask) {
+    if (tool === 'eraser') {
+      const base = baseCanvasRef.current;
+      if (!base) return;
       const scratch = scratchCanvasRef.current ?? document.createElement('canvas');
       scratchCanvasRef.current = scratch;
-      drawMaskedLine({ backing, mask, scratch, from, to, color, lineWidth, alpha, erase: tool === 'eraser' });
+      restoreBaseLine({ backing, base, mask, scratch, from, to, lineWidth, alpha });
+    } else if (mask) {
+      const scratch = scratchCanvasRef.current ?? document.createElement('canvas');
+      scratchCanvasRef.current = scratch;
+      drawMaskedLine({ backing, mask, scratch, from, to, color, lineWidth, alpha });
     } else {
       context.save();
       context.globalAlpha = alpha;
-      context.globalCompositeOperation = tool === 'eraser' ? 'destination-out' : 'source-over';
+      context.globalCompositeOperation = 'source-over';
       context.strokeStyle = color;
       context.lineWidth = lineWidth;
       context.lineCap = 'round';
@@ -873,7 +920,7 @@ export function App() {
             <aside className="side-controls" ref={sizeControlRef} aria-label="Brush size">
               <span className="control-icon"><ToolIcon name="brush" size={17} /></span>
               <button className="control-value" type="button" aria-label="Open brush settings" onClick={() => setPanel(panel === 'brush' ? null : 'brush')}>{brushSize}<small>px</small></button>
-              <input className="polished-range" style={rangeStyle(brushSize, 3, 90)} aria-label="Brush size" type="range" min="3" max="90" value={brushSize} onChange={(event) => setBrushSize(Number(event.target.value))} />
+              <VerticalRange label="Brush size" minimum={3} maximum={90} value={brushSize} onChange={setBrushSize} />
               <span className="control-label">Size</span>
             </aside>
             <div className="canvas-wrap" style={{ '--page-ratio': canvasSize.width / canvasSize.height, width: displaySize?.width, height: displaySize?.height, transform: `translate3d(${pan.x}px, ${pan.y}px, 0) scale(${zoom})` } as React.CSSProperties}>
@@ -892,7 +939,7 @@ export function App() {
             <aside className="side-controls side-controls--right" ref={opacityControlRef} aria-label="Brush opacity">
               <span className="control-icon"><ToolIcon name="droplet" size={17} /></span>
               <button className="control-value" type="button" aria-label="Open brush settings" onClick={() => setPanel(panel === 'brush' ? null : 'brush')}>{Math.round(opacity * 100)}<small>%</small></button>
-              <input className="polished-range" style={rangeStyle(opacity * 100, 10, 100)} aria-label="Brush opacity" type="range" min="10" max="100" value={opacity * 100} onChange={(event) => setOpacity(Number(event.target.value) / 100)} />
+              <VerticalRange label="Brush opacity" minimum={10} maximum={100} value={opacity * 100} onChange={(value) => setOpacity(value / 100)} />
               <span className="control-label">Opacity</span>
             </aside>
           </div>

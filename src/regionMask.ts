@@ -134,7 +134,7 @@ export function getRegionMask(cache: RegionMaskCache, point: Point) {
 }
 
 export function drawMaskedLine({
-  backing, mask, scratch, from, to, color, lineWidth, alpha, erase,
+  backing, mask, scratch, from, to, color, lineWidth, alpha,
 }: {
   backing: HTMLCanvasElement;
   mask: HTMLCanvasElement;
@@ -144,7 +144,6 @@ export function drawMaskedLine({
   color: string;
   lineWidth: number;
   alpha: number;
-  erase: boolean;
 }) {
   const padding = Math.ceil(lineWidth / 2 + 4);
   const left = Math.max(0, Math.floor(Math.min(from.x, to.x) - padding));
@@ -160,7 +159,7 @@ export function drawMaskedLine({
   if (!context || !backingContext) return false;
 
   context.globalAlpha = alpha;
-  context.strokeStyle = erase ? '#000000' : color;
+  context.strokeStyle = color;
   context.lineWidth = lineWidth;
   context.lineCap = 'round';
   context.lineJoin = 'round';
@@ -173,7 +172,55 @@ export function drawMaskedLine({
   context.drawImage(mask, left, top, width, height, 0, 0, width, height);
 
   backingContext.save();
-  backingContext.globalCompositeOperation = erase ? 'destination-out' : 'source-over';
+  backingContext.globalCompositeOperation = 'source-over';
+  backingContext.drawImage(scratch, left, top);
+  backingContext.restore();
+  return true;
+}
+
+export function restoreBaseLine({
+  backing, base, mask, scratch, from, to, lineWidth, alpha,
+}: {
+  backing: HTMLCanvasElement;
+  base: HTMLCanvasElement;
+  mask?: HTMLCanvasElement | null;
+  scratch: HTMLCanvasElement;
+  from: Point;
+  to: Point;
+  lineWidth: number;
+  alpha: number;
+}) {
+  const padding = Math.ceil(lineWidth / 2 + 4);
+  const left = Math.max(0, Math.floor(Math.min(from.x, to.x) - padding));
+  const top = Math.max(0, Math.floor(Math.min(from.y, to.y) - padding));
+  const right = Math.min(backing.width, Math.ceil(Math.max(from.x, to.x) + padding));
+  const bottom = Math.min(backing.height, Math.ceil(Math.max(from.y, to.y) + padding));
+  const width = Math.max(1, right - left);
+  const height = Math.max(1, bottom - top);
+  scratch.width = width;
+  scratch.height = height;
+  const context = scratch.getContext('2d');
+  const backingContext = backing.getContext('2d');
+  if (!context || !backingContext) return false;
+
+  // Restore the untouched page through the eraser stroke. Paint and fills are
+  // removed, while every pixel belonging to the original outline is preserved.
+  context.drawImage(base, left, top, width, height, 0, 0, width, height);
+  context.globalCompositeOperation = 'destination-in';
+  context.globalAlpha = alpha;
+  context.strokeStyle = '#000000';
+  context.lineWidth = lineWidth;
+  context.lineCap = 'round';
+  context.lineJoin = 'round';
+  context.beginPath();
+  context.moveTo(from.x - left, from.y - top);
+  context.lineTo(to.x - left, to.y - top);
+  context.stroke();
+  context.globalAlpha = 1;
+  if (mask) context.drawImage(mask, left, top, width, height, 0, 0, width, height);
+
+  backingContext.save();
+  backingContext.globalCompositeOperation = 'source-over';
   backingContext.drawImage(scratch, left, top);
   backingContext.restore();
   return true;
