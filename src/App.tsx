@@ -27,6 +27,7 @@ type ViewGesture = { distance: number; center: Point; zoom: number; pan: Point }
 type MultiTouch = { startedAt: number; maxPointers: number; moved: boolean; initial: Map<number, Point> };
 type MouseResize = { id: string; distance: number; width: number; height: number };
 type PageBase = { bitmap: string; width: number; height: number };
+type BrushCursor = { x: number; y: number } | null;
 
 const rangeStyle = (value: number, minimum: number, maximum: number) => ({
   '--range-progress': `${(value - minimum) / (maximum - minimum) * 100}%`,
@@ -114,6 +115,8 @@ export function App() {
   const regionMaskCacheRef = useRef<RegionMaskCache | null>(null);
   const activeRegionMaskRef = useRef<HTMLCanvasElement | null>(null);
   const scratchCanvasRef = useRef<HTMLCanvasElement | null>(null);
+  const fillPreviewCanvasRef = useRef<HTMLCanvasElement>(null);
+  const fillPreviewTargetRef = useRef<HTMLCanvasElement | string | null>(null);
 
   const [tool, setTool] = useState<Tool>('brush');
   const [color, setColor] = useState(colors[9]);
@@ -129,6 +132,8 @@ export function App() {
   const [selectedId, setSelectedId] = useState<string | null>(null);
   const [panel, setPanel] = useState<'shapes' | 'stickers' | 'brush' | 'actions' | 'library' | null>(null);
   const [dragColor, setDragColor] = useState<DragColor>(null);
+  const [fillPreviewActive, setFillPreviewActive] = useState(false);
+  const [brushCursor, setBrushCursor] = useState<BrushCursor>(null);
   const [message, setMessage] = useState('Choose a tool and start creating!');
   const [revision, setRevision] = useState(0);
   const [zoom, setZoom] = useState(1);
@@ -328,6 +333,7 @@ export function App() {
     setTool(nextTool);
     setPanel(null);
     setDrawingActive(false);
+    if (nextTool !== 'brush' && nextTool !== 'eraser') setBrushCursor(null);
     activeRegionMaskRef.current = null;
     haptic(6);
   };
@@ -440,11 +446,70 @@ export function App() {
     } else notify('Try another enclosed area');
   };
 
+  const clearFillPreview = () => {
+    const preview = fillPreviewCanvasRef.current;
+    preview?.getContext('2d')?.clearRect(0, 0, preview.width, preview.height);
+    fillPreviewTargetRef.current = null;
+    setFillPreviewActive(false);
+  };
+
+  const previewColorDrop = (clientX: number, clientY: number, previewColor: string) => {
+    const canvas = visibleRef.current;
+    const backing = backingRef.current;
+    const preview = fillPreviewCanvasRef.current;
+    const rect = canvas?.getBoundingClientRect();
+    if (!canvas || !backing || !preview || !rect || clientX < rect.left || clientX > rect.right || clientY < rect.top || clientY > rect.bottom) {
+      clearFillPreview();
+      return;
+    }
+
+    if (preview.width !== backing.width || preview.height !== backing.height) {
+      preview.width = backing.width;
+      preview.height = backing.height;
+      fillPreviewTargetRef.current = null;
+    }
+    const point = canvasPoint(canvas, clientX, clientY);
+    const object = hitObject(objectsRef.current, point);
+    const base = baseCanvasRef.current ?? copyCanvas(backing);
+    baseCanvasRef.current = base;
+    const cache = regionMaskCacheRef.current ?? createRegionMaskCache(base);
+    regionMaskCacheRef.current = cache;
+    const mask = object ? null : cache ? getRegionMask(cache, point) : null;
+    const target = object ? `object:${object.id}` : mask;
+    if (!target) {
+      clearFillPreview();
+      return;
+    }
+    if (fillPreviewTargetRef.current === target) return;
+
+    const context = preview.getContext('2d');
+    if (!context) return;
+    context.clearRect(0, 0, preview.width, preview.height);
+    context.save();
+    context.globalCompositeOperation = 'source-over';
+    if (object) {
+      context.globalAlpha = .28;
+      drawObject(context, { ...object, color: previewColor });
+    } else if (mask) {
+      context.globalAlpha = .24;
+      context.fillStyle = previewColor;
+      context.fillRect(0, 0, preview.width, preview.height);
+      context.globalAlpha = 1;
+      context.globalCompositeOperation = 'destination-in';
+      context.drawImage(mask, 0, 0);
+    }
+    context.restore();
+    fillPreviewTargetRef.current = target;
+    setFillPreviewActive(true);
+    setMessage('Release to fill the highlighted section');
+  };
+
   const pointerDown = (event: React.PointerEvent<HTMLCanvasElement>) => {
     const canvas = event.currentTarget;
     canvas.setPointerCapture(event.pointerId);
     if (event.pointerType === 'mouse' && event.button === 2) return;
     const point = canvasPoint(canvas, event.clientX, event.clientY);
+    if (tool === 'brush' || tool === 'eraser') setBrushCursor(point);
     pointers.current.set(event.pointerId, point);
     screenPointers.current.set(event.pointerId, { x: event.clientX, y: event.clientY });
 
@@ -539,8 +604,9 @@ export function App() {
   };
 
   const pointerMove = (event: React.PointerEvent<HTMLCanvasElement>) => {
-    if (!pointers.current.has(event.pointerId)) return;
     const point = canvasPoint(event.currentTarget, event.clientX, event.clientY);
+    if (tool === 'brush' || tool === 'eraser') setBrushCursor(point);
+    if (!pointers.current.has(event.pointerId)) return;
     pointers.current.set(event.pointerId, point);
     screenPointers.current.set(event.pointerId, { x: event.clientX, y: event.clientY });
 
@@ -680,6 +746,7 @@ export function App() {
       }
       endDrawing();
     }
+    if (event.pointerType === 'touch') setBrushCursor(null);
   };
 
   const undo = () => {
@@ -878,16 +945,22 @@ export function App() {
     const startY = event.clientY;
     const pointerId = event.pointerId;
     let moved = false;
+    setBrushCursor(null);
     const move = (moveEvent: PointerEvent) => {
       if (moveEvent.pointerId !== pointerId) return;
       if (Math.hypot(moveEvent.clientX - startX, moveEvent.clientY - startY) > 9) moved = true;
-      if (moved) setDragColor({ color: swatchColor, x: moveEvent.clientX, y: moveEvent.clientY });
+      if (moved) {
+        setDragColor({ color: swatchColor, x: moveEvent.clientX, y: moveEvent.clientY });
+        previewColorDrop(moveEvent.clientX, moveEvent.clientY, swatchColor);
+      }
     };
     const up = (upEvent: PointerEvent) => {
       if (upEvent.pointerId !== pointerId) return;
       window.removeEventListener('pointermove', move);
       window.removeEventListener('pointerup', up);
+      window.removeEventListener('pointercancel', cancel);
       setDragColor(null);
+      clearFillPreview();
       if (!moved) { setColor(swatchColor); haptic(5); return; }
       const canvas = visibleRef.current;
       const rect = canvas?.getBoundingClientRect();
@@ -895,8 +968,17 @@ export function App() {
         fillAt(canvasPoint(canvas, upEvent.clientX, upEvent.clientY), swatchColor);
       } else notify('Drop the color inside the canvas');
     };
+    const cancel = (cancelEvent: PointerEvent) => {
+      if (cancelEvent.pointerId !== pointerId) return;
+      window.removeEventListener('pointermove', move);
+      window.removeEventListener('pointerup', up);
+      window.removeEventListener('pointercancel', cancel);
+      setDragColor(null);
+      clearFillPreview();
+    };
     window.addEventListener('pointermove', move);
     window.addEventListener('pointerup', up);
+    window.addEventListener('pointercancel', cancel);
   };
 
   const selectedObject = objects.find((object) => object.id === selectedId) ?? null;
@@ -928,8 +1010,21 @@ export function App() {
                 ref={visibleRef} width={canvasSize.width} height={canvasSize.height} aria-label="Drawing canvas"
                 className={tool === 'move' ? 'is-move-tool' : ''}
                 onPointerDown={pointerDown} onPointerMove={pointerMove} onPointerUp={pointerUp} onPointerCancel={pointerUp}
+                onPointerEnter={(event) => { if (tool === 'brush' || tool === 'eraser') setBrushCursor(canvasPoint(event.currentTarget, event.clientX, event.clientY)); }}
+                onPointerLeave={() => { if (!pointers.current.size) setBrushCursor(null); }}
                 onDoubleClick={resetView} onContextMenu={(event) => event.preventDefault()}
               />
+              <canvas ref={fillPreviewCanvasRef} className={`fill-preview-canvas${fillPreviewActive ? ' is-active' : ''}`} width={canvasSize.width} height={canvasSize.height} aria-hidden="true" />
+              {brushCursor && (tool === 'brush' || tool === 'eraser') && <span
+                className={`brush-size-outline${tool === 'eraser' ? ' is-eraser' : ''}`}
+                style={{
+                  left: `${brushCursor.x / canvasSize.width * 100}%`,
+                  top: `${brushCursor.y / canvasSize.height * 100}%`,
+                  width: Math.max(5, brushSize * (displaySize?.width ?? canvasSize.width) / canvasSize.width),
+                  height: Math.max(5, brushSize * (displaySize?.width ?? canvasSize.width) / canvasSize.width),
+                }}
+                aria-hidden="true"
+              />}
               {stayInLines && <div className="line-mode-badge"><ToolIcon name="magic" size={16} /><span>Stay Inside Lines</span></div>}
               {selectedObject && <div className="selection-toolbar" aria-label="Selected object controls">
                 <span>{Math.round(selectedObject.width)} × {Math.round(selectedObject.height)}</span>
