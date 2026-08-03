@@ -1,9 +1,10 @@
-import { useCallback, useEffect, useLayoutEffect, useRef, useState } from 'react';
+import { type CSSProperties, type ReactNode, useCallback, useEffect, useLayoutEffect, useRef, useState } from 'react';
 import {
   ART_HEIGHT, ART_WIDTH, ArtObject, Point, Snapshot, Tool, canvasPoint,
   drawObject, fillRegion, hitObject, hitResizeHandle, newObject,
 } from './drawing';
 import { loadCurrentArtwork, saveCurrentArtwork } from './storage';
+import { ToolIcon } from './icons';
 
 const colors = [
   '#ff385d', '#ff6b6b', '#ff9f43', '#ffc93c', '#f7e967', '#4fdd89', '#21b66f',
@@ -24,12 +25,17 @@ type Gesture = { distance: number; angle: number; width: number; height: number;
 type ViewGesture = { distance: number; center: Point; zoom: number; pan: Point };
 type MultiTouch = { startedAt: number; maxPointers: number; moved: boolean; initial: Map<number, Point> };
 type MouseResize = { id: string; distance: number; width: number; height: number };
+type PageBase = { bitmap: string; width: number; height: number };
 
-function IconButton({ icon, label, active = false, disabled = false, onClick }: {
-  icon: string; label: string; active?: boolean; disabled?: boolean; onClick?: () => void;
+const rangeStyle = (value: number, minimum: number, maximum: number) => ({
+  '--range-progress': `${(value - minimum) / (maximum - minimum) * 100}%`,
+} as CSSProperties);
+
+function IconButton({ icon, label, active = false, disabled = false, className = '', onClick }: {
+  icon: ReactNode; label: string; active?: boolean; disabled?: boolean; className?: string; onClick?: () => void;
 }) {
   return (
-    <button className={`icon-button${active ? ' is-active' : ''}`} type="button" aria-label={label} title={label} disabled={disabled} onClick={onClick}>
+    <button className={`icon-button${active ? ' is-active' : ''}${className ? ` ${className}` : ''}`} type="button" aria-label={label} title={label} disabled={disabled} onClick={onClick}>
       <span aria-hidden="true">{icon}</span>
     </button>
   );
@@ -61,17 +67,20 @@ export function App() {
   const objectsRef = useRef<ArtObject[]>([]);
   const history = useRef<Snapshot[]>([]);
   const future = useRef<Snapshot[]>([]);
+  const pageBaseRef = useRef<PageBase | null>(null);
 
   const [tool, setTool] = useState<Tool>('brush');
   const [color, setColor] = useState(colors[9]);
   const [brushSize, setBrushSize] = useState(24);
   const [opacity, setOpacity] = useState(1);
+  const [flow, setFlow] = useState(.8);
+  const [smoothing, setSmoothing] = useState(.35);
   const [tolerance, setTolerance] = useState(32);
   const [objects, setObjects] = useState<ArtObject[]>([]);
   const [canvasSize, setCanvasSize] = useState({ width: ART_WIDTH, height: ART_HEIGHT });
   const [displaySize, setDisplaySize] = useState<{ width: number; height: number } | null>(null);
   const [selectedId, setSelectedId] = useState<string | null>(null);
-  const [panel, setPanel] = useState<'shapes' | 'stickers' | 'actions' | 'library' | null>(null);
+  const [panel, setPanel] = useState<'shapes' | 'stickers' | 'brush' | 'actions' | 'library' | null>(null);
   const [dragColor, setDragColor] = useState<DragColor>(null);
   const [message, setMessage] = useState('Choose a tool and start creating!');
   const [revision, setRevision] = useState(0);
@@ -90,6 +99,17 @@ export function App() {
     try { window.localStorage.setItem('color-pop-left-handed', String(leftHanded)); }
     catch { /* Settings still work for this session when storage is unavailable. */ }
   }, [leftHanded]);
+  useEffect(() => {
+    try {
+      const saved = JSON.parse(window.localStorage.getItem('color-pop-brush') ?? '{}') as { flow?: number; smoothing?: number };
+      if (typeof saved.flow === 'number') setFlow(saved.flow);
+      if (typeof saved.smoothing === 'number') setSmoothing(saved.smoothing);
+    } catch { /* Use the friendly defaults when settings cannot be restored. */ }
+  }, []);
+  useEffect(() => {
+    try { window.localStorage.setItem('color-pop-brush', JSON.stringify({ flow, smoothing })); }
+    catch { /* Settings still work for this session when storage is unavailable. */ }
+  }, [flow, smoothing]);
   useEffect(() => {
     const fullscreenChanged = () => { if (!document.fullscreenElement) setFocusMode(false); };
     document.addEventListener('fullscreenchange', fullscreenChanged);
@@ -142,6 +162,9 @@ export function App() {
     objects: objectsRef.current.map((object) => ({ ...object })),
     width: backingRef.current?.width ?? ART_WIDTH,
     height: backingRef.current?.height ?? ART_HEIGHT,
+    baseBitmap: pageBaseRef.current?.bitmap,
+    baseWidth: pageBaseRef.current?.width,
+    baseHeight: pageBaseRef.current?.height,
   }), []);
 
   const pushHistory = useCallback(() => {
@@ -165,6 +188,11 @@ export function App() {
       const context = backing.getContext('2d')!;
       context.clearRect(0, 0, width, height);
       context.drawImage(image, 0, 0, width, height);
+      pageBaseRef.current = {
+        bitmap: next.baseBitmap ?? next.bitmap,
+        width: next.baseWidth ?? width,
+        height: next.baseHeight ?? height,
+      };
       setCanvasSize({ width, height });
       objectsRef.current = next.objects.map((object) => ({ ...object }));
       setObjects(objectsRef.current);
@@ -183,7 +211,17 @@ export function App() {
     context.fillRect(0, 0, ART_WIDTH, ART_HEIGHT);
     backingRef.current = backing;
     objectsRef.current = [];
-    history.current = [{ bitmap: backing.toDataURL('image/png'), objects: [], width: ART_WIDTH, height: ART_HEIGHT }];
+    const blankBitmap = backing.toDataURL('image/png');
+    pageBaseRef.current = { bitmap: blankBitmap, width: ART_WIDTH, height: ART_HEIGHT };
+    history.current = [{
+      bitmap: blankBitmap,
+      objects: [],
+      width: ART_WIDTH,
+      height: ART_HEIGHT,
+      baseBitmap: blankBitmap,
+      baseWidth: ART_WIDTH,
+      baseHeight: ART_HEIGHT,
+    }];
     refreshHistoryState();
     setRevision(1);
     void loadCurrentArtwork().then((saved) => {
@@ -239,7 +277,7 @@ export function App() {
     if (!context) return;
     const pressureScale = pointerType === 'pen' ? .3 + Math.max(.05, pressure) * .7 : 1;
     context.save();
-    context.globalAlpha = opacity;
+    context.globalAlpha = Math.max(.03, opacity * flow);
     context.globalCompositeOperation = tool === 'eraser' ? 'destination-out' : 'source-over';
     context.strokeStyle = color;
     context.lineWidth = brushSize * pressureScale;
@@ -467,8 +505,13 @@ export function App() {
       return;
     }
     if ((tool === 'brush' || tool === 'eraser') && lastPoint.current && pointers.current.size === 1) {
-      drawLine(lastPoint.current, point, event.pointerType, event.pressure || 1);
-      lastPoint.current = point;
+      const response = 1 - smoothing * .82;
+      const smoothedPoint = {
+        x: lastPoint.current.x + (point.x - lastPoint.current.x) * response,
+        y: lastPoint.current.y + (point.y - lastPoint.current.y) * response,
+      };
+      drawLine(lastPoint.current, smoothedPoint, event.pointerType, event.pressure || 1);
+      lastPoint.current = smoothedPoint;
     }
   };
 
@@ -490,6 +533,8 @@ export function App() {
     if (!pointers.current.size) {
       if ((tool === 'brush' || tool === 'eraser') && lastPoint.current && !strokeStarted.current && releasedPoint && !hadMultiplePointers) {
         drawLine(lastPoint.current, { x: lastPoint.current.x + .1, y: lastPoint.current.y + .1 }, event.pointerType, event.pressure || 1);
+      } else if ((tool === 'brush' || tool === 'eraser') && lastPoint.current && strokeStarted.current && releasedPoint && !hadMultiplePointers) {
+        drawLine(lastPoint.current, releasedPoint, event.pointerType, event.pressure || 1);
       }
       if ((tool === 'brush' || tool === 'eraser') && strokeStarted.current) pushHistory();
       if (tool === 'move' && objectChanged.current) pushHistory();
@@ -559,17 +604,47 @@ export function App() {
   };
 
   const clearArt = () => {
-    const context = backingRef.current?.getContext('2d');
-    if (!context) return;
+    const backing = backingRef.current;
+    const context = backing?.getContext('2d');
+    if (!context || !backing) return;
     context.globalCompositeOperation = 'source-over';
     context.fillStyle = '#ffffff';
-    context.fillRect(0, 0, backingRef.current!.width, backingRef.current!.height);
+    context.fillRect(0, 0, backing.width, backing.height);
+    pageBaseRef.current = { bitmap: backing.toDataURL('image/png'), width: backing.width, height: backing.height };
     objectsRef.current = [];
     setObjects([]);
     setSelectedId(null);
     setRevision((value) => value + 1);
     window.setTimeout(pushHistory);
     notify('Fresh canvas ready');
+  };
+
+  const resetPage = () => {
+    const backing = backingRef.current;
+    const base = pageBaseRef.current;
+    if (!backing || !base) return;
+    const image = new Image();
+    image.onload = () => {
+      backing.width = base.width;
+      backing.height = base.height;
+      const context = backing.getContext('2d');
+      if (!context) return;
+      context.globalCompositeOperation = 'source-over';
+      context.clearRect(0, 0, base.width, base.height);
+      context.drawImage(image, 0, 0, base.width, base.height);
+      objectsRef.current = [];
+      setObjects([]);
+      setSelectedId(null);
+      setCanvasSize({ width: base.width, height: base.height });
+      setRevision((value) => value + 1);
+      setZoom(1);
+      setPan({ x: 0, y: 0 });
+      setPanel(null);
+      window.setTimeout(pushHistory);
+      haptic([8, 35, 8]);
+      notify('Page reset • Undo brings your work back');
+    };
+    image.src = base.bitmap;
   };
 
   const placeImage = (image: HTMLImageElement, successMessage: string) => {
@@ -593,6 +668,7 @@ export function App() {
       context.strokeStyle = '#171823';
       context.lineWidth = 10;
       context.strokeRect(padding - 5, padding - 5, imageWidth + 10, imageHeight + 10);
+      pageBaseRef.current = { bitmap: backing.toDataURL('image/png'), width, height };
       setCanvasSize({ width, height });
       objectsRef.current = [];
       setObjects([]);
@@ -660,6 +736,7 @@ export function App() {
       else if (key === '[') setBrushSize((value) => Math.max(3, value - 3));
       else if (key === ']') setBrushSize((value) => Math.min(90, value + 3));
       else if (key === '0') resetView();
+      else if (key === 'r') resetPage();
       else if (key === 'h') void toggleFocusMode();
       else if (key === 'l') setLeftHanded((value) => !value);
       else if ((event.key === 'Delete' || event.key === 'Backspace') && selectedId) { event.preventDefault(); deleteSelected(); }
@@ -722,8 +799,9 @@ export function App() {
         <div className="canvas-stage">
           <div className="canvas-cluster" ref={clusterRef}>
             <aside className="side-controls" ref={sizeControlRef} aria-label="Brush size">
-              <span className="control-value">{brushSize}</span>
-              <input aria-label="Brush size" type="range" min="3" max="90" value={brushSize} onChange={(event) => setBrushSize(Number(event.target.value))} />
+              <span className="control-icon"><ToolIcon name="brush" size={17} /></span>
+              <button className="control-value" type="button" aria-label="Open brush settings" onClick={() => setPanel(panel === 'brush' ? null : 'brush')}>{brushSize}<small>px</small></button>
+              <input className="polished-range" style={rangeStyle(brushSize, 3, 90)} aria-label="Brush size" type="range" min="3" max="90" value={brushSize} onChange={(event) => setBrushSize(Number(event.target.value))} />
               <span className="control-label">Size</span>
             </aside>
             <div className="canvas-wrap" style={{ '--page-ratio': canvasSize.width / canvasSize.height, width: displaySize?.width, height: displaySize?.height, transform: `translate3d(${pan.x}px, ${pan.y}px, 0) scale(${zoom})` } as React.CSSProperties}>
@@ -739,8 +817,9 @@ export function App() {
               </div>}
             </div>
             <aside className="side-controls side-controls--right" ref={opacityControlRef} aria-label="Brush opacity">
-              <span className="control-value">{Math.round(opacity * 100)}%</span>
-              <input aria-label="Brush opacity" type="range" min="10" max="100" value={opacity * 100} onChange={(event) => setOpacity(Number(event.target.value) / 100)} />
+              <span className="control-icon"><ToolIcon name="droplet" size={17} /></span>
+              <button className="control-value" type="button" aria-label="Open brush settings" onClick={() => setPanel(panel === 'brush' ? null : 'brush')}>{Math.round(opacity * 100)}<small>%</small></button>
+              <input className="polished-range" style={rangeStyle(opacity * 100, 10, 100)} aria-label="Brush opacity" type="range" min="10" max="100" value={opacity * 100} onChange={(event) => setOpacity(Number(event.target.value) / 100)} />
               <span className="control-label">Opacity</span>
             </aside>
           </div>
@@ -752,13 +831,23 @@ export function App() {
       {focusMode && <button className="focus-exit" type="button" onClick={() => void toggleFocusMode()} aria-label="Exit focus mode">✕</button>}
 
       <nav className="tool-dock" aria-label="Drawing tools">
-        <IconButton icon="✎" label="Brush" active={tool === 'brush'} onClick={() => chooseTool('brush')} />
-        <IconButton icon="⌁" label="Eraser" active={tool === 'eraser'} onClick={() => chooseTool('eraser')} />
-        <IconButton icon="◇" label="Fill" active={tool === 'fill'} onClick={() => { chooseTool('fill'); notify('Tap an area, or drag a color onto it'); }} />
-        <IconButton icon="↖" label="Move objects" active={tool === 'move'} onClick={() => chooseTool('move')} />
-        <IconButton icon="□" label="Shapes" active={panel === 'shapes'} onClick={() => setPanel(panel === 'shapes' ? null : 'shapes')} />
-        <IconButton icon="★" label="Stickers" active={panel === 'stickers'} onClick={() => setPanel(panel === 'stickers' ? null : 'stickers')} />
+        <IconButton icon={<ToolIcon name="brush" />} label="Brush" active={tool === 'brush'} onClick={() => chooseTool('brush')} />
+        <IconButton icon={<ToolIcon name="eraser" />} label="Eraser" active={tool === 'eraser'} onClick={() => chooseTool('eraser')} />
+        <IconButton icon={<ToolIcon name="fill" />} label="Fill bucket" active={tool === 'fill'} onClick={() => { chooseTool('fill'); notify('Tap an area, or drag a color onto it'); }} />
+        <IconButton icon={<ToolIcon name="move" />} label="Move objects" active={tool === 'move'} onClick={() => chooseTool('move')} />
+        <IconButton icon={<ToolIcon name="shapes" />} label="Shapes" active={panel === 'shapes'} onClick={() => setPanel(panel === 'shapes' ? null : 'shapes')} />
+        <IconButton icon={<ToolIcon name="sticker" />} label="Stickers" active={panel === 'stickers'} onClick={() => setPanel(panel === 'stickers' ? null : 'stickers')} />
+        <IconButton icon={<ToolIcon name="reset" />} label="Reset page" className="reset-tool" onClick={resetPage} />
       </nav>
+
+      {panel === 'brush' && <section className="popover brush-popover" role="dialog" aria-label="Brush settings">
+        <header><div><strong>Brush settings</strong><small>Fine-tune how paint feels</small></div><button type="button" aria-label="Close brush settings" onClick={() => setPanel(null)}>×</button></header>
+        <div className="brush-preview" aria-hidden="true"><span style={{ width: Math.max(8, Math.min(72, brushSize)), height: Math.max(8, Math.min(72, brushSize)), backgroundColor: color, opacity: Math.max(.12, opacity * flow) }} /></div>
+        <label><span><b>Size</b><em>{brushSize}px</em></span><input className="polished-range" style={rangeStyle(brushSize, 3, 90)} type="range" min="3" max="90" value={brushSize} onChange={(event) => setBrushSize(Number(event.target.value))} /></label>
+        <label><span><b>Opacity</b><em>{Math.round(opacity * 100)}%</em></span><input className="polished-range" style={rangeStyle(opacity * 100, 10, 100)} type="range" min="10" max="100" value={opacity * 100} onChange={(event) => setOpacity(Number(event.target.value) / 100)} /></label>
+        <label><span><b>Flow</b><em>{Math.round(flow * 100)}%</em></span><input className="polished-range" style={rangeStyle(flow * 100, 5, 100)} type="range" min="5" max="100" value={flow * 100} onChange={(event) => setFlow(Number(event.target.value) / 100)} /></label>
+        <label><span><b>Smoothing</b><em>{Math.round(smoothing * 100)}%</em></span><input className="polished-range" style={rangeStyle(smoothing * 100, 0, 90)} type="range" min="0" max="90" value={smoothing * 100} onChange={(event) => setSmoothing(Number(event.target.value) / 100)} /></label>
+      </section>}
 
       {panel === 'shapes' && <div className="popover shapes-popover">
         <button onClick={() => addObject('rectangle')}>▰<span>Rectangle</span></button>
@@ -769,6 +858,7 @@ export function App() {
       {panel === 'actions' && <div className="popover actions-popover">
         <button type="button" onClick={() => fileRef.current?.click()}>⬆️ <span>Upload picture</span></button>
         <button type="button" onClick={save}>⬇️ <span>Save PNG</span></button>
+        <button type="button" onClick={resetPage}><ToolIcon name="reset" size={21} /> <span>Reset page</span></button>
         <button type="button" onClick={clearArt}>✨ <span>New canvas</span></button>
         <button type="button" onClick={() => void toggleFocusMode()}>⛶ <span>{focusMode ? 'Exit focus mode' : 'Focus mode'}</span></button>
         <button type="button" onClick={() => { setLeftHanded((value) => !value); haptic(8); }}>↔️ <span>{leftHanded ? 'Right-handed layout' : 'Left-handed layout'}</span></button>

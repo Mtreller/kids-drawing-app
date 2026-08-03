@@ -15,7 +15,15 @@ export type ArtObject = {
   sticker?: string;
 };
 
-export type Snapshot = { bitmap: string; objects: ArtObject[]; width?: number; height?: number };
+export type Snapshot = {
+  bitmap: string;
+  objects: ArtObject[];
+  width?: number;
+  height?: number;
+  baseBitmap?: string;
+  baseWidth?: number;
+  baseHeight?: number;
+};
 
 export function canvasPoint(canvas: HTMLCanvasElement, clientX: number, clientY: number): Point {
   const rect = canvas.getBoundingClientRect();
