@@ -133,7 +133,7 @@ export function App() {
   const [opacity, setOpacity] = useState(1);
   const [flow, setFlow] = useState(.8);
   const [smoothing, setSmoothing] = useState(.35);
-  const [stayInLines, setStayInLines] = useState(false);
+  const [stayInLines, setStayInLines] = useState(true);
   const [tolerance, setTolerance] = useState(32);
   const [objects, setObjects] = useState<ArtObject[]>([]);
   const [canvasSize, setCanvasSize] = useState({ width: ART_WIDTH, height: ART_HEIGHT });
@@ -167,7 +167,9 @@ export function App() {
       const saved = JSON.parse(window.localStorage.getItem('color-pop-brush') ?? '{}') as { flow?: number; smoothing?: number; stayInLines?: boolean };
       if (typeof saved.flow === 'number') setFlow(saved.flow);
       if (typeof saved.smoothing === 'number') setSmoothing(saved.smoothing);
-      if (typeof saved.stayInLines === 'boolean') setStayInLines(saved.stayInLines);
+      const saferDefaultApplied = window.localStorage.getItem('color-pop-stay-inside-default-v1') === 'true';
+      if (saferDefaultApplied && typeof saved.stayInLines === 'boolean') setStayInLines(saved.stayInLines);
+      else window.localStorage.setItem('color-pop-stay-inside-default-v1', 'true');
     } catch { /* Use the friendly defaults when settings cannot be restored. */ }
   }, []);
   useEffect(() => {
