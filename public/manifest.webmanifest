@@ -1,0 +1,19 @@
+{
+  "name": "Color Pop Kids Drawing App",
+  "short_name": "Color Pop",
+  "description": "A touch-first drawing and coloring app for kids.",
+  "start_url": "/kids-drawing-app/",
+  "scope": "/kids-drawing-app/",
+  "display": "standalone",
+  "orientation": "any",
+  "background_color": "#f7f2ff",
+  "theme_color": "#7557ff",
+  "icons": [
+    {
+      "src": "/kids-drawing-app/icon.svg",
+      "sizes": "any",
+      "type": "image/svg+xml",
+      "purpose": "any maskable"
+    }
+  ]
+}

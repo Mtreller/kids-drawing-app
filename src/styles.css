@@ -18,6 +18,7 @@ button { border: 0; color: inherit; font: inherit; -webkit-tap-highlight-color: 
   grid-template-rows: var(--bar-height) minmax(0, 1fr) auto;
   background: linear-gradient(145deg, #f8f5fc, #eee9f7);
 }
+.topbar, .palette, .tool-dock, .side-controls { transition: opacity .2s ease, transform .2s ease; }
 
 .topbar {
   z-index: 5;
@@ -85,6 +86,19 @@ button { border: 0; color: inherit; font: inherit; -webkit-tap-highlight-color: 
 .control-label { max-width: 52px; color: #766f82; font-size: 10px; font-weight: 800; text-align: center; }
 .status-pill { position: absolute; z-index: 4; left: 50%; bottom: 16px; max-width: min(75%, 520px); padding: 9px 15px; overflow: hidden; border-radius: 999px; color: white; font-size: 12px; font-weight: 800; text-overflow: ellipsis; white-space: nowrap; background: rgb(37 32 57 / 84%); backdrop-filter: blur(12px); transform: translateX(-50%); pointer-events: none; }
 .zoom-reset { position: absolute; z-index: 5; left: max(14px, env(safe-area-inset-left)); bottom: 16px; min-width: 52px; height: 38px; padding: 0 10px; border-radius: 13px; color: #5f4ab5; font-size: 11px; font-weight: 900; background: rgb(255 255 255 / 90%); box-shadow: 0 7px 20px rgb(47 35 70 / 16%); backdrop-filter: blur(12px); }
+.focus-exit { position: fixed; z-index: 20; top: max(12px, env(safe-area-inset-top)); right: max(12px, env(safe-area-inset-right)); width: 44px; height: 44px; border-radius: 15px; color: white; font-size: 18px; font-weight: 900; background: rgb(37 32 57 / 78%); box-shadow: 0 9px 24px rgb(32 25 47 / 24%); backdrop-filter: blur(14px); }
+
+.app-shell.is-focus { grid-template-rows: 0 minmax(0, 1fr) 0; }
+.app-shell.is-focus .topbar, .app-shell.is-focus .palette { visibility: hidden; overflow: hidden; padding-block: 0; border: 0; opacity: 0; pointer-events: none; }
+.app-shell.is-focus .workspace { padding-top: max(16px, env(safe-area-inset-top)); padding-bottom: max(82px, env(safe-area-inset-bottom)); }
+.app-shell.is-focus .tool-dock { bottom: max(18px, env(safe-area-inset-bottom)); }
+.app-shell.is-drawing .topbar, .app-shell.is-drawing .palette, .app-shell.is-drawing .tool-dock, .app-shell.is-drawing .side-controls { opacity: 0; pointer-events: none; }
+.app-shell.is-drawing .tool-dock { transform: translate(-50%, 18px); }
+
+.app-shell.is-left-handed .side-controls:not(.side-controls--right) { right: max(12px, env(safe-area-inset-right)); left: auto; }
+.app-shell.is-left-handed .side-controls--right { right: auto; left: max(12px, env(safe-area-inset-left)); }
+.app-shell.is-left-handed .zoom-reset { right: max(14px, env(safe-area-inset-right)); left: auto; }
+.app-shell.is-left-handed .actions-popover { right: auto; left: 14px; }
 
 .tool-dock {
   position: fixed;
@@ -109,11 +123,12 @@ button { border: 0; color: inherit; font: inherit; -webkit-tap-highlight-color: 
 .shapes-popover, .sticker-popover { left: 50%; bottom: 148px; transform: translateX(-50%); }
 .sticker-popover { max-width: min(94vw, 540px); flex-wrap: wrap; justify-content: center; }
 .sticker-popover button { min-width: 48px; font-size: 30px; }
-.actions-popover { top: 70px; right: 14px; width: 220px; flex-direction: column; }
+.actions-popover { top: 70px; right: 14px; width: 240px; max-height: calc(100dvh - 84px); overflow-y: auto; flex-direction: column; }
 .actions-popover button { min-height: 46px; grid-template-columns: 34px 1fr; text-align: left; }
 .actions-popover button span { width: 100%; font-size: 13px; }
 .actions-popover label { display: grid; gap: 7px; padding: 12px; color: #696176; font-size: 12px; font-weight: 800; }
 .actions-popover input { width: 100%; accent-color: #755cff; }
+.input-hints { display: grid; gap: 6px; margin: 2px 6px 5px; padding: 10px; border-radius: 13px; color: #746c81; font-size: 10px; font-weight: 750; background: #f1edf7; }
 .color-drop-orb { position: fixed; z-index: 99; width: 60px; height: 60px; border: 6px solid white; border-radius: 50%; box-shadow: 0 14px 32px rgb(38 30 54 / 38%); transform: translate(-50%, -50%); pointer-events: none; }
 .visually-hidden { position: fixed; width: 1px; height: 1px; overflow: hidden; opacity: 0; pointer-events: none; }
 
@@ -167,6 +182,9 @@ button { border: 0; color: inherit; font: inherit; -webkit-tap-highlight-color: 
   .shapes-popover, .sticker-popover { bottom: 132px; }
   .status-pill { bottom: 8px; }
   .zoom-reset { left: 6px; bottom: 8px; min-width: 44px; height: 34px; }
+  .app-shell.is-left-handed .side-controls:not(.side-controls--right) { right: 6px; left: auto; }
+  .app-shell.is-left-handed .side-controls--right { right: auto; left: 6px; }
+  .app-shell.is-left-handed .zoom-reset { right: 6px; left: auto; }
   .library-backdrop { padding: 8px; }
   .library-panel { max-height: calc(100dvh - 16px); padding: 18px; border-radius: 25px; }
   .drawing-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 11px; }
@@ -179,6 +197,10 @@ button { border: 0; color: inherit; font: inherit; -webkit-tap-highlight-color: 
   .workspace { padding: 8px 60px 8px; }
   .canvas-wrap { width: min(100%, calc((100dvh - 70px) * 4 / 3)); }
   .tool-dock { left: auto; right: 12px; bottom: 50%; flex-direction: column; transform: translateY(50%); }
+  .app-shell.is-left-handed .tool-dock { right: auto; left: 12px; }
+  .app-shell.is-drawing .tool-dock { transform: translateY(50%) translateX(18px); }
+  .app-shell.is-left-handed.is-drawing .tool-dock { transform: translateY(50%) translateX(-18px); }
+  .app-shell.is-focus .tool-dock { bottom: 50%; }
   .tool-dock .icon-button { min-width: 40px; width: 40px; height: 40px; }
   .side-controls--right { display: none; }
   .palette { position: fixed; z-index: 7; bottom: 0; left: 0; right: 82px; background: transparent; border: 0; pointer-events: none; }

@@ -3,6 +3,7 @@ import {
   ART_HEIGHT, ART_WIDTH, ArtObject, Point, Snapshot, Tool, canvasPoint,
   drawObject, fillRegion, hitObject, newObject,
 } from './drawing';
+import { loadCurrentArtwork, saveCurrentArtwork } from './storage';
 
 const colors = [
   '#ff385d', '#ff6b6b', '#ff9f43', '#ffc93c', '#f7e967', '#4fdd89', '#21b66f',
@@ -21,6 +22,7 @@ const pawPatrolPages = [
 type DragColor = { color: string; x: number; y: number } | null;
 type Gesture = { distance: number; angle: number; width: number; height: number; rotation: number };
 type ViewGesture = { distance: number; center: Point; zoom: number; pan: Point };
+type MultiTouch = { startedAt: number; maxPointers: number; moved: boolean; initial: Map<number, Point> };
 
 function IconButton({ icon, label, active = false, disabled = false, onClick }: {
   icon: string; label: string; active?: boolean; disabled?: boolean; onClick?: () => void;
@@ -46,6 +48,10 @@ export function App() {
   const gesture = useRef<Gesture | null>(null);
   const viewGesture = useRef<ViewGesture | null>(null);
   const navigatingCanvas = useRef(false);
+  const multiTouch = useRef<MultiTouch | null>(null);
+  const mousePan = useRef<{ point: Point; pan: Point } | null>(null);
+  const spaceHeld = useRef(false);
+  const hideTimer = useRef<number | null>(null);
   const objectChanged = useRef(false);
   const objectsRef = useRef<ArtObject[]>([]);
   const history = useRef<Snapshot[]>([]);
@@ -65,8 +71,28 @@ export function App() {
   const [zoom, setZoom] = useState(1);
   const [pan, setPan] = useState<Point>({ x: 0, y: 0 });
   const [historyState, setHistoryState] = useState({ undo: false, redo: false });
+  const [focusMode, setFocusMode] = useState(false);
+  const [drawingActive, setDrawingActive] = useState(false);
+  const [leftHanded, setLeftHanded] = useState(() => {
+    try { return window.localStorage.getItem('color-pop-left-handed') === 'true'; }
+    catch { return false; }
+  });
 
   useEffect(() => { objectsRef.current = objects; }, [objects]);
+  useEffect(() => {
+    try { window.localStorage.setItem('color-pop-left-handed', String(leftHanded)); }
+    catch { /* Settings still work for this session when storage is unavailable. */ }
+  }, [leftHanded]);
+  useEffect(() => {
+    const fullscreenChanged = () => { if (!document.fullscreenElement) setFocusMode(false); };
+    document.addEventListener('fullscreenchange', fullscreenChanged);
+    return () => document.removeEventListener('fullscreenchange', fullscreenChanged);
+  }, []);
+  useEffect(() => () => { if (hideTimer.current) window.clearTimeout(hideTimer.current); }, []);
+
+  const haptic = (pattern: number | number[] = 8) => {
+    if ('vibrate' in navigator) navigator.vibrate(pattern);
+  };
 
   const refreshHistoryState = () => setHistoryState({ undo: history.current.length > 1, redo: future.current.length > 0 });
 
@@ -89,9 +115,11 @@ export function App() {
   }), []);
 
   const pushHistory = useCallback(() => {
-    history.current.push(snapshot());
+    const current = snapshot();
+    history.current.push(current);
     if (history.current.length > 30) history.current.shift();
     future.current = [];
+    void saveCurrentArtwork(current).catch(() => undefined);
     refreshHistoryState();
   }, [snapshot]);
 
@@ -123,6 +151,12 @@ export function App() {
     history.current = [{ bitmap: backing.toDataURL('image/png'), objects: [] }];
     refreshHistoryState();
     setRevision(1);
+    void loadCurrentArtwork().then((saved) => {
+      if (!saved?.bitmap) return;
+      history.current = [saved];
+      applySnapshot(saved);
+      setMessage('Your last drawing was restored');
+    }).catch(() => undefined);
   }, []);
 
   const updateObjects = (updater: (items: ArtObject[]) => ArtObject[]) => {
@@ -134,6 +168,35 @@ export function App() {
   const notify = (text: string) => {
     setMessage(text);
     window.setTimeout(() => setMessage('Choose a tool and start creating!'), 2400);
+  };
+
+  const beginDrawing = () => {
+    if (hideTimer.current) window.clearTimeout(hideTimer.current);
+    setDrawingActive(true);
+  };
+
+  const endDrawing = () => {
+    if (hideTimer.current) window.clearTimeout(hideTimer.current);
+    hideTimer.current = window.setTimeout(() => setDrawingActive(false), 650);
+  };
+
+  const chooseTool = (nextTool: Tool) => {
+    setTool(nextTool);
+    setPanel(null);
+    setDrawingActive(false);
+    haptic(6);
+  };
+
+  const toggleFocusMode = async () => {
+    const entering = !focusMode;
+    setFocusMode(entering);
+    setPanel(null);
+    setDrawingActive(false);
+    haptic(entering ? [8, 35, 8] : 6);
+    try {
+      if (entering && !document.fullscreenElement && document.documentElement.requestFullscreen) await document.documentElement.requestFullscreen();
+      if (!entering && document.fullscreenElement && document.exitFullscreen) await document.exitFullscreen();
+    } catch { /* iOS uses the distraction-free layout when browser fullscreen is unavailable. */ }
   };
 
   const drawLine = (from: Point, to: Point, pointerType = 'touch', pressure = 1) => {
@@ -164,18 +227,45 @@ export function App() {
     notify('Canvas fitted to the screen');
   };
 
+  const constrainPan = (nextZoom: number, nextPan: Point) => {
+    const maxX = (nextZoom - 1) * 360;
+    const maxY = (nextZoom - 1) * 280;
+    return {
+      x: Math.max(-maxX, Math.min(maxX, nextPan.x)),
+      y: Math.max(-maxY, Math.min(maxY, nextPan.y)),
+    };
+  };
+
+  const wheelCanvas = (event: React.WheelEvent<HTMLElement>) => {
+    event.preventDefault();
+    const unit = event.deltaMode === 1 ? 16 : 1;
+    if (event.ctrlKey || event.metaKey) {
+      const nextZoom = Math.max(1, Math.min(4, zoom * Math.exp(-event.deltaY * unit * .008)));
+      setZoom(nextZoom);
+      setPan(constrainPan(nextZoom, pan));
+      setMessage(`Canvas zoom ${Math.round(nextZoom * 100)}%`);
+      return;
+    }
+    if (zoom > 1) {
+      setPan(constrainPan(zoom, { x: pan.x - event.deltaX * unit, y: pan.y - event.deltaY * unit }));
+      setMessage('Trackpad pan • pinch or Ctrl-wheel to zoom');
+    }
+  };
+
   const fillAt = (point: Point, fillColor = color) => {
     const target = hitObject(objectsRef.current, point);
     if (target) {
       updateObjects((items) => items.map((item) => item.id === target.id ? { ...item, color: fillColor } : item));
       setSelectedId(target.id);
       pushHistory();
+      haptic(10);
       notify('Object colored!');
       return;
     }
     if (backingRef.current && fillRegion(backingRef.current, point, fillColor, tolerance)) {
       setRevision((value) => value + 1);
       window.setTimeout(pushHistory);
+      haptic(10);
       notify('Area filled!');
     } else notify('Try another enclosed area');
   };
@@ -183,9 +273,15 @@ export function App() {
   const pointerDown = (event: React.PointerEvent<HTMLCanvasElement>) => {
     const canvas = event.currentTarget;
     canvas.setPointerCapture(event.pointerId);
+    if (event.pointerType === 'mouse' && event.button === 2) return;
     const point = canvasPoint(canvas, event.clientX, event.clientY);
     pointers.current.set(event.pointerId, point);
     screenPointers.current.set(event.pointerId, { x: event.clientX, y: event.clientY });
+
+    if ((event.button === 1 || (spaceHeld.current && event.button === 0)) && event.pointerType === 'mouse') {
+      mousePan.current = { point: { x: event.clientX, y: event.clientY }, pan: { ...pan } };
+      return;
+    }
 
     if (screenPointers.current.size === 2 && tool !== 'move') {
       if (strokeStarted.current) pushHistory();
@@ -201,7 +297,18 @@ export function App() {
       fillTap.current = null;
       fillTapMoved.current = true;
       navigatingCanvas.current = true;
+      multiTouch.current = {
+        startedAt: Date.now(),
+        maxPointers: 2,
+        moved: false,
+        initial: new Map(screenPointers.current),
+      };
       setMessage('Pinch to zoom • drag two fingers to move');
+      return;
+    }
+
+    if (screenPointers.current.size > 2 && multiTouch.current && tool !== 'move') {
+      multiTouch.current.maxPointers = screenPointers.current.size;
       return;
     }
 
@@ -225,6 +332,7 @@ export function App() {
     if (pointers.current.size === 1) {
       lastPoint.current = point;
       strokeStarted.current = false;
+      beginDrawing();
     }
   };
 
@@ -234,20 +342,36 @@ export function App() {
     pointers.current.set(event.pointerId, point);
     screenPointers.current.set(event.pointerId, { x: event.clientX, y: event.clientY });
 
+    if (mousePan.current) {
+      setPan(constrainPan(zoom, {
+        x: mousePan.current.pan.x + event.clientX - mousePan.current.point.x,
+        y: mousePan.current.pan.y + event.clientY - mousePan.current.point.y,
+      }));
+      return;
+    }
+
     if (screenPointers.current.size >= 2 && tool !== 'move') {
       const active = [...screenPointers.current.values()];
       const [a, b] = active;
       const distance = Math.max(1, Math.hypot(b.x - a.x, b.y - a.y));
       const center = { x: (a.x + b.x) / 2, y: (a.y + b.y) / 2 };
+      if (multiTouch.current) {
+        multiTouch.current.maxPointers = Math.max(multiTouch.current.maxPointers, screenPointers.current.size);
+        const originalA = multiTouch.current.initial.get([...screenPointers.current.keys()][0]);
+        const originalB = multiTouch.current.initial.get([...screenPointers.current.keys()][1]);
+        if (originalA && originalB) {
+          const originalDistance = Math.hypot(originalB.x - originalA.x, originalB.y - originalA.y);
+          const originalCenter = { x: (originalA.x + originalB.x) / 2, y: (originalA.y + originalB.y) / 2 };
+          if (Math.abs(distance - originalDistance) > 8 || Math.hypot(center.x - originalCenter.x, center.y - originalCenter.y) > 8) multiTouch.current.moved = true;
+        }
+      }
       if (!viewGesture.current) viewGesture.current = { distance, center, zoom, pan: { ...pan } };
       const nextZoom = Math.max(1, Math.min(4, viewGesture.current.zoom * distance / viewGesture.current.distance));
-      const maxPanX = (nextZoom - 1) * 360;
-      const maxPanY = (nextZoom - 1) * 280;
       setZoom(nextZoom);
-      setPan({
-        x: Math.max(-maxPanX, Math.min(maxPanX, viewGesture.current.pan.x + center.x - viewGesture.current.center.x)),
-        y: Math.max(-maxPanY, Math.min(maxPanY, viewGesture.current.pan.y + center.y - viewGesture.current.center.y)),
-      });
+      setPan(constrainPan(nextZoom, {
+        x: viewGesture.current.pan.x + center.x - viewGesture.current.center.x,
+        y: viewGesture.current.pan.y + center.y - viewGesture.current.center.y,
+      }));
       return;
     }
 
@@ -296,6 +420,11 @@ export function App() {
     const releasedPoint = pointers.current.get(event.pointerId) ?? null;
     pointers.current.delete(event.pointerId);
     screenPointers.current.delete(event.pointerId);
+    if (mousePan.current) {
+      mousePan.current = null;
+      if (!screenPointers.current.size) notify(`Canvas zoom ${Math.round(zoom * 100)}%`);
+      return;
+    }
     if (screenPointers.current.size < 2) viewGesture.current = null;
 
     if (tool === 'fill' && fillTap.current && !fillTapMoved.current && !hadMultiplePointers) {
@@ -314,25 +443,41 @@ export function App() {
       dragOffset.current = null;
       gesture.current = null;
       objectChanged.current = false;
-      if (navigatingCanvas.current) {
-        navigatingCanvas.current = false;
+      const touchGesture = multiTouch.current;
+      const isQuickTap = touchGesture && !touchGesture.moved && Date.now() - touchGesture.startedAt < 320;
+      multiTouch.current = null;
+      const wasNavigating = navigatingCanvas.current;
+      navigatingCanvas.current = false;
+      if (isQuickTap && touchGesture.maxPointers >= 3) {
+        redo();
+        notify('Redo');
+      } else if (isQuickTap && touchGesture.maxPointers === 2) {
+        undo();
+        notify('Undo');
+      } else if (wasNavigating) {
         notify(`Canvas zoom ${Math.round(zoom * 100)}%`);
       }
+      endDrawing();
     }
   };
 
   const undo = () => {
     if (history.current.length <= 1) return;
     future.current.push(history.current.pop()!);
-    applySnapshot(history.current.at(-1)!);
+    const previous = history.current.at(-1)!;
+    applySnapshot(previous);
+    void saveCurrentArtwork(previous).catch(() => undefined);
     refreshHistoryState();
+    haptic(8);
   };
   const redo = () => {
     const next = future.current.pop();
     if (!next) return;
     history.current.push(next);
     applySnapshot(next);
+    void saveCurrentArtwork(next).catch(() => undefined);
     refreshHistoryState();
+    haptic([7, 25, 7]);
   };
 
   const addObject = (kind: ArtObject['kind'], sticker?: string) => {
@@ -342,6 +487,7 @@ export function App() {
     setTool('move');
     setPanel(null);
     pushHistory();
+    haptic(10);
     notify('Use one finger to move, two fingers to resize and rotate');
   };
 
@@ -350,6 +496,7 @@ export function App() {
     updateObjects((items) => items.filter((item) => item.id !== selectedId));
     setSelectedId(null);
     pushHistory();
+    haptic(8);
     notify('Object removed');
   };
 
@@ -423,6 +570,48 @@ export function App() {
     notify('Artwork saved as PNG');
   };
 
+  useEffect(() => {
+    const keyDown = (event: KeyboardEvent) => {
+      const target = event.target as HTMLElement | null;
+      const isTyping = target?.matches('input, textarea, select, [contenteditable="true"]');
+      if (event.code === 'Space' && !isTyping) {
+        spaceHeld.current = true;
+        event.preventDefault();
+        return;
+      }
+      if (isTyping) return;
+      const modifier = event.metaKey || event.ctrlKey;
+      const key = event.key.toLowerCase();
+      if (modifier && key === 'z') {
+        event.preventDefault();
+        event.shiftKey ? redo() : undo();
+      } else if (modifier && key === 's') {
+        event.preventDefault();
+        save();
+      } else if (key === 'b') chooseTool('brush');
+      else if (key === 'e') chooseTool('eraser');
+      else if (key === 'f') chooseTool('fill');
+      else if (key === 'v') chooseTool('move');
+      else if (key === '[') setBrushSize((value) => Math.max(3, value - 3));
+      else if (key === ']') setBrushSize((value) => Math.min(90, value + 3));
+      else if (key === '0') resetView();
+      else if (key === 'h') void toggleFocusMode();
+      else if (key === 'l') setLeftHanded((value) => !value);
+      else if ((event.key === 'Delete' || event.key === 'Backspace') && selectedId) { event.preventDefault(); deleteSelected(); }
+      else if (event.key === 'Escape') {
+        setPanel(null);
+        if (focusMode) void toggleFocusMode();
+      }
+    };
+    const keyUp = (event: KeyboardEvent) => { if (event.code === 'Space') spaceHeld.current = false; };
+    window.addEventListener('keydown', keyDown);
+    window.addEventListener('keyup', keyUp);
+    return () => {
+      window.removeEventListener('keydown', keyDown);
+      window.removeEventListener('keyup', keyUp);
+    };
+  });
+
   const startColorDrag = (event: React.PointerEvent, swatchColor: string) => {
     const startX = event.clientX;
     const startY = event.clientY;
@@ -438,7 +627,7 @@ export function App() {
       window.removeEventListener('pointermove', move);
       window.removeEventListener('pointerup', up);
       setDragColor(null);
-      if (!moved) { setColor(swatchColor); return; }
+      if (!moved) { setColor(swatchColor); haptic(5); return; }
       const canvas = visibleRef.current;
       const rect = canvas?.getBoundingClientRect();
       if (canvas && rect && upEvent.clientX >= rect.left && upEvent.clientX <= rect.right && upEvent.clientY >= rect.top && upEvent.clientY <= rect.bottom) {
@@ -450,18 +639,19 @@ export function App() {
   };
 
   return (
-    <main className="app-shell">
+    <main className={`app-shell${focusMode ? ' is-focus' : ''}${drawingActive ? ' is-drawing' : ''}${leftHanded ? ' is-left-handed' : ''}`}>
       <header className="topbar">
         <div className="brand"><span className="brand__mark" aria-hidden="true">✦</span><span>Color Pop</span></div>
         <div className="topbar__actions">
           <IconButton icon="↶" label="Undo" disabled={!historyState.undo} onClick={undo} />
           <IconButton icon="↷" label="Redo" disabled={!historyState.redo} onClick={redo} />
+          <IconButton icon="⛶" label="Enter focus mode" active={focusMode} onClick={() => void toggleFocusMode()} />
           <button className="library-button" type="button" onClick={() => setPanel('library')}><span aria-hidden="true">▦</span><b>Drawings</b></button>
           <button className="gallery-button" type="button" onClick={() => setPanel(panel === 'actions' ? null : 'actions')}><span aria-hidden="true">•••</span><b>Actions</b></button>
         </div>
       </header>
 
-      <section className="workspace">
+      <section className="workspace" onWheel={wheelCanvas}>
         <aside className="side-controls" aria-label="Brush size">
           <span className="control-value">{brushSize}</span>
           <input aria-label="Brush size" type="range" min="3" max="90" value={brushSize} onChange={(event) => setBrushSize(Number(event.target.value))} />
@@ -472,6 +662,7 @@ export function App() {
           <canvas
             ref={visibleRef} width={ART_WIDTH} height={ART_HEIGHT} aria-label="Drawing canvas"
             onPointerDown={pointerDown} onPointerMove={pointerMove} onPointerUp={pointerUp} onPointerCancel={pointerUp}
+            onDoubleClick={resetView} onContextMenu={(event) => event.preventDefault()}
           />
           {selectedId && <button className="delete-object" type="button" onClick={deleteSelected} aria-label="Delete selected object">×</button>}
         </div>
@@ -485,11 +676,13 @@ export function App() {
         <button className="zoom-reset" type="button" onClick={resetView} aria-label="Fit canvas to screen">{Math.round(zoom * 100)}%</button>
       </section>
 
+      {focusMode && <button className="focus-exit" type="button" onClick={() => void toggleFocusMode()} aria-label="Exit focus mode">✕</button>}
+
       <nav className="tool-dock" aria-label="Drawing tools">
-        <IconButton icon="✎" label="Brush" active={tool === 'brush'} onClick={() => { setTool('brush'); setPanel(null); }} />
-        <IconButton icon="⌁" label="Eraser" active={tool === 'eraser'} onClick={() => { setTool('eraser'); setPanel(null); }} />
-        <IconButton icon="◇" label="Fill" active={tool === 'fill'} onClick={() => { setTool('fill'); setPanel(null); notify('Tap an area, or drag a color onto it'); }} />
-        <IconButton icon="↖" label="Move objects" active={tool === 'move'} onClick={() => { setTool('move'); setPanel(null); }} />
+        <IconButton icon="✎" label="Brush" active={tool === 'brush'} onClick={() => chooseTool('brush')} />
+        <IconButton icon="⌁" label="Eraser" active={tool === 'eraser'} onClick={() => chooseTool('eraser')} />
+        <IconButton icon="◇" label="Fill" active={tool === 'fill'} onClick={() => { chooseTool('fill'); notify('Tap an area, or drag a color onto it'); }} />
+        <IconButton icon="↖" label="Move objects" active={tool === 'move'} onClick={() => chooseTool('move')} />
         <IconButton icon="□" label="Shapes" active={panel === 'shapes'} onClick={() => setPanel(panel === 'shapes' ? null : 'shapes')} />
         <IconButton icon="★" label="Stickers" active={panel === 'stickers'} onClick={() => setPanel(panel === 'stickers' ? null : 'stickers')} />
       </nav>
@@ -501,10 +694,13 @@ export function App() {
       </div>}
       {panel === 'stickers' && <div className="popover sticker-popover">{stickers.map((item) => <button key={item} onClick={() => addObject('sticker', item)}>{item}</button>)}</div>}
       {panel === 'actions' && <div className="popover actions-popover">
-        <button onClick={() => fileRef.current?.click()}>⬆️ <span>Upload picture</span></button>
-        <button onClick={save}>⬇️ <span>Save PNG</span></button>
-        <button onClick={clearArt}>✨ <span>New canvas</span></button>
+        <button type="button" onClick={() => fileRef.current?.click()}>⬆️ <span>Upload picture</span></button>
+        <button type="button" onClick={save}>⬇️ <span>Save PNG</span></button>
+        <button type="button" onClick={clearArt}>✨ <span>New canvas</span></button>
+        <button type="button" onClick={() => void toggleFocusMode()}>⛶ <span>{focusMode ? 'Exit focus mode' : 'Focus mode'}</span></button>
+        <button type="button" onClick={() => { setLeftHanded((value) => !value); haptic(8); }}>↔️ <span>{leftHanded ? 'Right-handed layout' : 'Left-handed layout'}</span></button>
         <label>Fill tolerance <b>{tolerance}</b><input type="range" min="5" max="80" value={tolerance} onChange={(event) => setTolerance(Number(event.target.value))} /></label>
+        <div className="input-hints"><span>👆 1 finger draws</span><span>✌️ 2 fingers zoom • tap undo</span><span>🖱 Ctrl-wheel zoom • Space-drag pan</span></div>
       </div>}
       {panel === 'library' && <div className="library-backdrop" role="presentation" onPointerDown={(event) => { if (event.target === event.currentTarget) setPanel(null); }}>
         <section className="library-panel" role="dialog" aria-modal="true" aria-labelledby="library-title">
