@@ -16,11 +16,11 @@ export type ArtObject = {
 };
 
 export type Snapshot = {
-  bitmap: string;
+  bitmap: string | Blob;
   objects: ArtObject[];
   width?: number;
   height?: number;
-  baseBitmap?: string;
+  baseBitmap?: string | Blob;
   baseWidth?: number;
   baseHeight?: number;
 };

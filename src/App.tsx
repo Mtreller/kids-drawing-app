@@ -1,49 +1,24 @@
-import { type CSSProperties, type ReactNode, useCallback, useEffect, useLayoutEffect, useRef, useState } from 'react';
+import { useCallback, useEffect, useLayoutEffect, useRef, useState } from 'react';
 import {
   ART_HEIGHT, ART_WIDTH, ArtObject, Point, Snapshot, Tool,
   drawObject, fillRegion, hitObject, hitResizeHandle, hitRotateHandle, newObject,
 } from './drawing';
 import { loadCurrentArtwork, saveCurrentArtwork } from './storage';
-import { ToolIcon } from './icons';
-import { brushPresets, drawBrushStroke, renderBrushStroke, type BrushType } from './brushes';
+import { brushPresets, drawBrushStroke, type BrushType } from './brushes';
 import { copyCanvas, createRegionMaskCache, getRegionMask, restoreBaseLine, type RegionMaskCache } from './regionMask';
+import { bitmapSource, canvasToPngBlob, trimHistory } from './history';
+import {
+  canvasPointFromClient, constrainPan, normalizeRotation,
+  type MouseResize, type MouseRotate, type MultiTouch, type ObjectGesture, type ViewGesture,
+} from './gestures';
+import { DrawingLibrary } from './components/DrawingLibrary';
+import { colors, Palette } from './components/Palette';
+import { ToolDock, TopBar, type PanelName } from './components/Toolbars';
+import { CanvasWorkspace } from './components/CanvasWorkspace';
+import { FloatingPanels } from './components/FloatingPanels';
+import { useColorDropGesture, type DragColor } from './hooks/useColorDropGesture';
 
-const colors = [
-  '#ff385d', '#ff6b6b', '#ff9f43', '#ffc93c', '#f7e967', '#4fdd89', '#21b66f',
-  '#38c9d8', '#3199f4', '#2667ff', '#755cff', '#a855f7', '#df4ec8', '#ff65a3',
-  '#f3b78b', '#b9784c', '#704332', '#ffffff', '#aab2bd', '#4b5260', '#171823',
-];
-const stickers = ['⭐', '🌈', '🦋', '🦖', '🐯', '🐙', '🌸', '❤️', '🚀', '☀️'];
-const pawPatrolPages = [
-  { title: 'Mighty Pups Team', file: 'mighty-pups-team.webp' },
-  { title: 'Everest', file: 'everest-sitting-proudly.webp' },
-  { title: 'Skye', file: 'skye-smiling.webp' },
-  { title: 'Marshall', file: 'marshall-sitting-panting.webp' },
-  { title: 'Chase', file: 'chase-standing-proudly.webp' },
-].map((page) => ({ ...page, src: `${import.meta.env.BASE_URL}drawings/paw-patrol/${page.file}` }));
-const unicornPrincessPages = [
-  { title: 'Mermaid & Dolphin Friends', file: 'mermaid-dolphin-friends.webp' },
-  { title: 'Dreamy Unicorn', file: 'unicorn-hill.webp' },
-].map((page) => ({ ...page, src: `${import.meta.env.BASE_URL}drawings/unicorns-princesses/${page.file}` }));
-const stitchPages = [
-  { title: 'Bubble Tea', file: 'bubble-tea.webp' },
-  { title: 'Hula Dance', file: 'hula-dance.webp' },
-  { title: 'Christmas Surprise', file: 'christmas-surprise.webp' },
-  { title: 'Sandcastle Fun', file: 'sandcastle-fun.webp' },
-  { title: 'Sleepy Stitch', file: 'sleepy-stitch.webp' },
-  { title: 'The Big Shoe', file: 'big-shoe.webp' },
-  { title: 'Curious Stitch', file: 'curious-stitch.webp' },
-  { title: 'Happy Stitch', file: 'happy-stitch.webp' },
-].map((page) => ({ ...page, src: `${import.meta.env.BASE_URL}drawings/stitch/${page.file}` }));
-const magicBrushes = brushPresets.filter((brush) => brush.group === 'Magic');
-
-type DragColor = { color: string; x: number; y: number } | null;
-type Gesture = { distance: number; angle: number; width: number; height: number; rotation: number };
-type ViewGesture = { distance: number; angle: number; center: Point; zoom: number; pan: Point; rotation: number };
-type MultiTouch = { startedAt: number; maxPointers: number; moved: boolean; initial: Map<number, Point> };
-type MouseResize = { id: string; distance: number; width: number; height: number };
-type MouseRotate = { id: string; angle: number; rotation: number };
-type PageBase = { bitmap: string; width: number; height: number };
+type PageBase = { bitmap: string | Blob; width: number; height: number };
 type BrushCursor = { x: number; y: number } | null;
 type SafariFullscreenDocument = Document & {
   webkitFullscreenElement?: Element | null;
@@ -58,100 +33,8 @@ const activeFullscreenElement = () => {
   return document.fullscreenElement ?? safariDocument.webkitFullscreenElement ?? null;
 };
 
-const rangeStyle = (value: number, minimum: number, maximum: number) => ({
-  '--range-progress': `${(value - minimum) / (maximum - minimum) * 100}%`,
-} as CSSProperties);
 const BRUSH_MIN = 3;
 const BRUSH_MAX = 240;
-
-function IconButton({ icon, label, active = false, disabled = false, className = '', onClick }: {
-  icon: ReactNode; label: string; active?: boolean; disabled?: boolean; className?: string; onClick?: () => void;
-}) {
-  return (
-    <button className={`icon-button${active ? ' is-active' : ''}${className ? ` ${className}` : ''}`} type="button" aria-label={label} title={label} disabled={disabled} onClick={onClick}>
-      <span aria-hidden="true">{icon}</span>
-    </button>
-  );
-}
-
-function VerticalRange({ label, minimum, maximum, value, onChange }: {
-  label: string;
-  minimum: number;
-  maximum: number;
-  value: number;
-  onChange: (value: number) => void;
-}) {
-  const updateFromPointer = (event: React.PointerEvent<HTMLDivElement>) => {
-    const rect = event.currentTarget.getBoundingClientRect();
-    const progress = 1 - Math.max(0, Math.min(1, (event.clientY - rect.top) / rect.height));
-    onChange(Math.round(minimum + progress * (maximum - minimum)));
-  };
-  return (
-    <div
-      className="vertical-range-wrap"
-      onPointerDown={(event) => {
-        if (event.pointerType === 'mouse' && event.button !== 0) return;
-        event.preventDefault();
-        event.currentTarget.querySelector('input')?.focus({ preventScroll: true });
-        event.currentTarget.setPointerCapture(event.pointerId);
-        updateFromPointer(event);
-      }}
-      onPointerMove={(event) => {
-        if (event.currentTarget.hasPointerCapture(event.pointerId)) updateFromPointer(event);
-      }}
-      onPointerUp={updateFromPointer}
-    >
-      <input
-        className="polished-range"
-        style={rangeStyle(value, minimum, maximum)}
-        aria-label={label}
-        type="range"
-        min={minimum}
-        max={maximum}
-        value={value}
-        onChange={(event) => onChange(Number(event.target.value))}
-      />
-    </div>
-  );
-}
-
-function BrushStrokePreview({ type, color, size, alpha }: { type: BrushType; color: string; size: number; alpha: number }) {
-  const previewRef = useRef<HTMLCanvasElement>(null);
-  useEffect(() => {
-    const canvas = previewRef.current;
-    const context = canvas?.getContext('2d');
-    if (!canvas || !context) return;
-    context.clearRect(0, 0, canvas.width, canvas.height);
-    renderBrushStroke(context, {
-      from: { x: 34, y: canvas.height / 2 + 5 },
-      to: { x: canvas.width - 34, y: canvas.height / 2 - 5 },
-      color,
-      size: Math.max(10, Math.min(54, size * .42)),
-      alpha,
-      type,
-    });
-  }, [alpha, color, size, type]);
-  return <canvas ref={previewRef} width="480" height="76" aria-label={`${type} brush preview`} />;
-}
-
-function MagicBrushPreview({ type, color }: { type: BrushType; color: string }) {
-  const previewRef = useRef<HTMLCanvasElement>(null);
-  useEffect(() => {
-    const canvas = previewRef.current;
-    const context = canvas?.getContext('2d');
-    if (!canvas || !context) return;
-    context.clearRect(0, 0, canvas.width, canvas.height);
-    renderBrushStroke(context, {
-      from: { x: 9, y: 39 },
-      to: { x: 45, y: 15 },
-      color,
-      size: 20,
-      alpha: 1,
-      type,
-    });
-  }, [color, type]);
-  return <canvas ref={previewRef} width="54" height="54" aria-hidden="true" />;
-}
 
 export function App() {
   const visibleRef = useRef<HTMLCanvasElement>(null);
@@ -168,7 +51,7 @@ export function App() {
   const fillTap = useRef<Point | null>(null);
   const fillTapMoved = useRef(false);
   const dragOffset = useRef<Point | null>(null);
-  const gesture = useRef<Gesture | null>(null);
+  const gesture = useRef<ObjectGesture | null>(null);
   const viewGesture = useRef<ViewGesture | null>(null);
   const navigatingCanvas = useRef(false);
   const multiTouch = useRef<MultiTouch | null>(null);
@@ -181,6 +64,7 @@ export function App() {
   const objectsRef = useRef<ArtObject[]>([]);
   const history = useRef<Snapshot[]>([]);
   const future = useRef<Snapshot[]>([]);
+  const historyWorkRef = useRef<Promise<void>>(Promise.resolve());
   const pageBaseRef = useRef<PageBase | null>(null);
   const baseCanvasRef = useRef<HTMLCanvasElement | null>(null);
   const regionMaskCacheRef = useRef<RegionMaskCache | null>(null);
@@ -202,7 +86,7 @@ export function App() {
   const [canvasSize, setCanvasSize] = useState({ width: ART_WIDTH, height: ART_HEIGHT });
   const [displaySize, setDisplaySize] = useState<{ width: number; height: number } | null>(null);
   const [selectedId, setSelectedId] = useState<string | null>(null);
-  const [panel, setPanel] = useState<'shapes' | 'stickers' | 'brush' | 'actions' | 'library' | null>(null);
+  const [panel, setPanel] = useState<PanelName>(null);
   const [dragColor, setDragColor] = useState<DragColor>(null);
   const [fillPreviewActive, setFillPreviewActive] = useState(false);
   const [brushCursor, setBrushCursor] = useState<BrushCursor>(null);
@@ -284,18 +168,7 @@ export function App() {
   }, [canvasSize.width, canvasSize.height, canvasRotation, focusMode]);
 
   const pointFromClient = useCallback((canvas: HTMLCanvasElement, clientX: number, clientY: number, requireInside = false): Point | null => {
-    const rect = canvas.getBoundingClientRect();
-    const visualX = clientX - (rect.left + rect.width / 2);
-    const visualY = clientY - (rect.top + rect.height / 2);
-    const cosine = Math.cos(canvasRotation);
-    const sine = Math.sin(canvasRotation);
-    const localX = (visualX * cosine + visualY * sine) / zoom + canvas.clientWidth / 2;
-    const localY = (-visualX * sine + visualY * cosine) / zoom + canvas.clientHeight / 2;
-    if (requireInside && (localX < 0 || localX > canvas.clientWidth || localY < 0 || localY > canvas.clientHeight)) return null;
-    return {
-      x: Math.max(0, Math.min(canvas.width, localX * canvas.width / Math.max(1, canvas.clientWidth))),
-      y: Math.max(0, Math.min(canvas.height, localY * canvas.height / Math.max(1, canvas.clientHeight))),
-    };
+    return canvasPointFromClient(canvas, clientX, clientY, canvasRotation, zoom, requireInside);
   }, [canvasRotation, zoom]);
 
   useEffect(() => {
@@ -342,39 +215,56 @@ export function App() {
     regionMaskCacheRef.current = null;
     activeRegionMaskRef.current = null;
     const image = new Image();
+    const source = bitmapSource(base.bitmap);
     image.onload = () => {
       const canvas = document.createElement('canvas');
       canvas.width = base.width;
       canvas.height = base.height;
       canvas.getContext('2d')?.drawImage(image, 0, 0, base.width, base.height);
       baseCanvasRef.current = canvas;
+      source.release();
     };
-    image.src = base.bitmap;
+    image.onerror = source.release;
+    image.src = source.url;
   }, []);
 
-  const snapshot = useCallback((): Snapshot => ({
-    bitmap: backingRef.current?.toDataURL('image/png') ?? '',
-    objects: objectsRef.current.map((object) => ({ ...object })),
-    width: backingRef.current?.width ?? ART_WIDTH,
-    height: backingRef.current?.height ?? ART_HEIGHT,
-    baseBitmap: pageBaseRef.current?.bitmap,
-    baseWidth: pageBaseRef.current?.width,
-    baseHeight: pageBaseRef.current?.height,
-  }), []);
+  const snapshot = useCallback(async (): Promise<Snapshot> => {
+    const backing = backingRef.current;
+    if (!backing) throw new Error('Drawing canvas is not ready.');
+    const objects = objectsRef.current.map((object) => ({ ...object }));
+    const width = backing.width;
+    const height = backing.height;
+    const base = pageBaseRef.current;
+    const bitmap = await canvasToPngBlob(backing);
+    return {
+      bitmap,
+      objects,
+      width,
+      height,
+      baseBitmap: base?.bitmap,
+      baseWidth: base?.width,
+      baseHeight: base?.height,
+    };
+  }, []);
 
   const pushHistory = useCallback(() => {
-    const current = snapshot();
-    history.current.push(current);
-    if (history.current.length > 30) history.current.shift();
-    future.current = [];
-    void saveCurrentArtwork(current).catch(() => undefined);
-    refreshHistoryState();
+    const pendingSnapshot = snapshot();
+    historyWorkRef.current = historyWorkRef.current.then(async () => {
+      const current = await pendingSnapshot;
+      history.current.push(current);
+      trimHistory(history.current);
+      future.current = [];
+      refreshHistoryState();
+      await saveCurrentArtwork(current);
+    }).catch(() => undefined);
+    return historyWorkRef.current;
   }, [snapshot]);
 
   const applySnapshot = useCallback((next: Snapshot) => {
     const backing = backingRef.current;
     if (!backing) return;
     const image = new Image();
+    const source = bitmapSource(next.bitmap);
     image.onload = () => {
       const width = next.width ?? image.naturalWidth ?? ART_WIDTH;
       const height = next.height ?? image.naturalHeight ?? ART_HEIGHT;
@@ -393,8 +283,10 @@ export function App() {
       setObjects(objectsRef.current);
       setSelectedId(null);
       setRevision((value) => value + 1);
+      source.release();
     };
-    image.src = next.bitmap;
+    image.onerror = source.release;
+    image.src = source.url;
   }, [restoreBaseCanvas]);
 
   useEffect(() => {
@@ -406,25 +298,30 @@ export function App() {
     context.fillRect(0, 0, ART_WIDTH, ART_HEIGHT);
     backingRef.current = backing;
     objectsRef.current = [];
-    const blankBitmap = backing.toDataURL('image/png');
     capturePageBase(backing);
-    history.current = [{
-      bitmap: blankBitmap,
-      objects: [],
-      width: ART_WIDTH,
-      height: ART_HEIGHT,
-      baseBitmap: blankBitmap,
-      baseWidth: ART_WIDTH,
-      baseHeight: ART_HEIGHT,
-    }];
-    refreshHistoryState();
     setRevision(1);
-    void loadCurrentArtwork().then((saved) => {
-      if (!saved?.bitmap) return;
+    let cancelled = false;
+    void (async () => {
+      const blankBitmap = await canvasToPngBlob(backing);
+      if (cancelled) return;
+      const base = pageBaseRef.current;
+      history.current = [{
+        bitmap: blankBitmap,
+        objects: [],
+        width: ART_WIDTH,
+        height: ART_HEIGHT,
+        baseBitmap: base?.bitmap,
+        baseWidth: ART_WIDTH,
+        baseHeight: ART_HEIGHT,
+      }];
+      refreshHistoryState();
+      const saved = await loadCurrentArtwork();
+      if (cancelled || !saved?.bitmap) return;
       history.current = [saved];
       applySnapshot(saved);
       setMessage('Your last drawing was restored');
-    }).catch(() => undefined);
+    })().catch(() => undefined);
+    return () => { cancelled = true; };
   }, [applySnapshot, capturePageBase]);
 
   const updateObjects = (updater: (items: ArtObject[]) => ArtObject[]) => {
@@ -550,11 +447,6 @@ export function App() {
     notify('Canvas fitted to the screen');
   };
 
-  const normalizeRotation = (angle: number) => {
-    const fullTurn = Math.PI * 2;
-    return ((angle + Math.PI) % fullTurn + fullTurn) % fullTurn - Math.PI;
-  };
-
   const rotateCanvas = (quarterTurns: number) => {
     setCanvasRotation((angle) => normalizeRotation(angle + quarterTurns * Math.PI / 2));
     setZoom(1);
@@ -569,15 +461,6 @@ export function App() {
     setPan({ x: 0, y: 0 });
     haptic(6);
     notify('Canvas returned upright');
-  };
-
-  const constrainPan = (nextZoom: number, nextPan: Point) => {
-    const maxX = (nextZoom - 1) * 360;
-    const maxY = (nextZoom - 1) * 280;
-    return {
-      x: Math.max(-maxX, Math.min(maxX, nextPan.x)),
-      y: Math.max(-maxY, Math.min(maxY, nextPan.y)),
-    };
   };
 
   const wheelCanvas = (event: React.WheelEvent<HTMLElement>) => {
@@ -970,7 +853,8 @@ export function App() {
     if (event.pointerType === 'touch') setBrushCursor(null);
   };
 
-  const undo = () => {
+  const undo = async () => {
+    await historyWorkRef.current;
     if (history.current.length <= 1) return;
     future.current.push(history.current.pop()!);
     const previous = history.current.at(-1)!;
@@ -979,7 +863,8 @@ export function App() {
     refreshHistoryState();
     haptic(8);
   };
-  const redo = () => {
+  const redo = async () => {
+    await historyWorkRef.current;
     const next = future.current.pop();
     if (!next) return;
     history.current.push(next);
@@ -1038,6 +923,7 @@ export function App() {
     const base = pageBaseRef.current;
     if (!backing || !base) return;
     const image = new Image();
+    const source = bitmapSource(base.bitmap);
     image.onload = () => {
       backing.width = base.width;
       backing.height = base.height;
@@ -1058,8 +944,10 @@ export function App() {
       window.setTimeout(pushHistory);
       haptic([8, 35, 8]);
       notify('Page reset • Undo brings your work back');
+      source.release();
     };
-    image.src = base.bitmap;
+    image.onerror = source.release;
+    image.src = source.url;
   };
 
   const placeImage = (image: HTMLImageElement, successMessage: string) => {
@@ -1171,281 +1059,126 @@ export function App() {
     };
   });
 
-  const startColorDrag = (event: React.PointerEvent, swatchColor: string) => {
-    const startX = event.clientX;
-    const startY = event.clientY;
-    const pointerId = event.pointerId;
-    const pointerType = event.pointerType;
-    const verticalPalette = window.matchMedia('(orientation: landscape) and (max-height: 600px)').matches;
-    const source = event.currentTarget as HTMLElement;
-    const paletteScroller = source.closest<HTMLElement>('.palette__scroller');
-    let filling = false;
-    let scrolling = false;
-    let lastX = startX;
-    let lastY = startY;
-    if (verticalPalette && pointerType === 'touch') event.preventDefault();
-    try { source.setPointerCapture(pointerId); } catch { /* Window listeners still keep the drag reliable. */ }
-    setBrushCursor(null);
-    const activateFill = () => {
-      if (filling || scrolling) return;
-      filling = true;
-      setColor(swatchColor);
-      setTool('fill');
-      setPanel(null);
-      setDrawingActive(false);
-      haptic([8, 28, 8]);
-      const fingerLift = pointerType === 'touch' ? 48 : 0;
-      setDragColor({ color: swatchColor, x: lastX - (verticalPalette ? fingerLift : 0), y: lastY - (verticalPalette ? 0 : fingerLift) });
-      setMessage('ColorDrop ready • drag to a section and release');
-    };
-    const holdTimer = window.setTimeout(activateFill, pointerType === 'touch' ? 340 : 420);
-    const clearHold = () => window.clearTimeout(holdTimer);
-    const move = (moveEvent: PointerEvent) => {
-      if (moveEvent.pointerId !== pointerId) return;
-      const previousY = lastY;
-      lastX = moveEvent.clientX;
-      lastY = moveEvent.clientY;
-      const deltaX = moveEvent.clientX - startX;
-      const deltaY = moveEvent.clientY - startY;
-      const distance = Math.hypot(deltaX, deltaY);
-      const paletteScroll = verticalPalette
-        ? Math.abs(deltaY) > 12 && Math.abs(deltaY) > Math.abs(deltaX) * 1.2
-        : Math.abs(deltaX) > 12 && Math.abs(deltaX) > Math.abs(deltaY) * 1.2;
-      if (!filling && !scrolling && pointerType === 'touch' && paletteScroll) {
-        scrolling = true;
-        clearHold();
-        if (verticalPalette && paletteScroller) paletteScroller.scrollTop -= deltaY;
-      } else if (scrolling && verticalPalette && paletteScroller) {
-        paletteScroller.scrollTop -= moveEvent.clientY - previousY;
-      }
-      if (scrolling) {
-        if (verticalPalette) moveEvent.preventDefault();
-        return;
-      }
-      const draggedTowardCanvas = verticalPalette
-        ? deltaX < -8 && Math.abs(deltaX) > Math.abs(deltaY) * .55
-        : deltaY < -8 && Math.abs(deltaY) > Math.abs(deltaX) * .55;
-      if (!filling && !scrolling && (pointerType !== 'touch' ? distance > 6 : draggedTowardCanvas)) {
-        activateFill();
-      }
-      if (filling) {
-        moveEvent.preventDefault();
-        const fingerLift = pointerType === 'touch' ? 48 : 0;
-        setDragColor({ color: swatchColor, x: moveEvent.clientX - (verticalPalette ? fingerLift : 0), y: moveEvent.clientY - (verticalPalette ? 0 : fingerLift) });
-        previewColorDrop(moveEvent.clientX, moveEvent.clientY, swatchColor);
-      }
-    };
-    const up = (upEvent: PointerEvent) => {
-      if (upEvent.pointerId !== pointerId) return;
-      document.removeEventListener('pointermove', move, true);
-      document.removeEventListener('pointerup', up, true);
-      document.removeEventListener('pointercancel', cancel, true);
-      clearHold();
-      setDragColor(null);
-      clearFillPreview();
-      if (scrolling) return;
-      if (!filling) { setColor(swatchColor); haptic(5); return; }
-      const canvas = visibleRef.current;
-      const dropPoint = canvas ? pointFromClient(canvas, upEvent.clientX, upEvent.clientY, true) : null;
-      if (dropPoint) {
-        fillAt(dropPoint, swatchColor);
-      } else notify('Drop the color inside the canvas');
-    };
-    const cancel = (cancelEvent: PointerEvent) => {
-      if (cancelEvent.pointerId !== pointerId) return;
-      document.removeEventListener('pointermove', move, true);
-      document.removeEventListener('pointerup', up, true);
-      document.removeEventListener('pointercancel', cancel, true);
-      clearHold();
-      setDragColor(null);
-      clearFillPreview();
-    };
-    document.addEventListener('pointermove', move, { capture: true, passive: false });
-    document.addEventListener('pointerup', up, true);
-    document.addEventListener('pointercancel', cancel, true);
-  };
+  const startColorDrag = useColorDropGesture({
+    canvasRef: visibleRef,
+    pointFromClient,
+    previewColorDrop,
+    clearFillPreview,
+    fillAt,
+    setColor,
+    activateFillTool: () => setTool('fill'),
+    closePanels: () => setPanel(null),
+    stopDrawing: () => setDrawingActive(false),
+    setDragColor,
+    setMessage,
+    clearBrushCursor: () => setBrushCursor(null),
+    haptic,
+    notify,
+  });
 
   const selectedObject = objects.find((object) => object.id === selectedId) ?? null;
 
   return (
     <main className={`app-shell${focusMode ? ' is-focus' : ''}${drawingActive ? ' is-drawing' : ''}${leftHanded ? ' is-left-handed' : ''}${stayInLines ? ' is-line-safe' : ''}`}>
-      <header className="topbar">
-        <div className="brand"><span className="brand__mark" aria-hidden="true">✦</span><span>Color Pop</span></div>
-        <div className="topbar__actions">
-          <IconButton icon="↶" label="Undo" disabled={!historyState.undo} onClick={undo} />
-          <IconButton icon="↷" label="Redo" disabled={!historyState.redo} onClick={redo} />
-          <IconButton icon="⛶" label={focusMode ? 'Exit focus mode' : 'Enter focus mode'} active={focusMode} onClick={() => void toggleFocusMode()} />
-          <button className="library-button" type="button" onClick={() => setPanel('library')}><span aria-hidden="true">▦</span><b>Drawings</b></button>
-          <button className="gallery-button" type="button" onClick={() => setPanel(panel === 'actions' ? null : 'actions')}><span aria-hidden="true">•••</span><b>Actions</b></button>
-        </div>
-      </header>
+      <TopBar
+        focusMode={focusMode}
+        canUndo={historyState.undo}
+        canRedo={historyState.redo}
+        onUndo={() => void undo()}
+        onRedo={() => void redo()}
+        onFocus={() => void toggleFocusMode()}
+        onLibrary={() => setPanel('library')}
+        onActions={() => setPanel(panel === 'actions' ? null : 'actions')}
+      />
 
-      <section className="workspace" onWheel={wheelCanvas}>
-        <div className="workspace-hud">
-          <div className="status-pill" role="status">{message}</div>
-          {stayInLines && <div className="line-mode-badge"><ToolIcon name="magic" size={16} /><span>Stay Inside Lines</span></div>}
-          {selectedObject && <div className="selection-toolbar" aria-label="Selected object controls">
-            <span>{Math.round(selectedObject.width)} × {Math.round(selectedObject.height)} • {Math.round(selectedObject.rotation * 180 / Math.PI)}°</span>
-            <button className="rotate-selection" type="button" onClick={rotateSelected} aria-label="Rotate selected object 15 degrees">↻</button>
-            <button className="delete-selection" type="button" onClick={deleteSelected} aria-label="Delete selected object">×</button>
-          </div>}
-          <div className="view-controls" aria-label="Canvas view controls">
-            <button type="button" onClick={() => rotateCanvas(-1)} aria-label="Rotate canvas left 90 degrees">↶<span>90°</span></button>
-            <button className="rotation-reset" type="button" onClick={resetCanvasRotation} aria-label="Reset canvas rotation">{Math.round(canvasRotation * 180 / Math.PI)}°</button>
-            <button type="button" onClick={() => rotateCanvas(1)} aria-label="Rotate canvas right 90 degrees">↷<span>90°</span></button>
-            <button className="zoom-reset" type="button" onClick={resetView} aria-label="Fit canvas to screen">Fit {Math.round(zoom * 100)}%</button>
-          </div>
-        </div>
-        <div
-          className="canvas-stage"
-          onPointerDownCapture={stagePointerDown}
-          onPointerMoveCapture={stagePointerMove}
-          onPointerUp={stagePointerUp}
-          onPointerCancel={stagePointerUp}
-        >
-          <div className="canvas-cluster" ref={clusterRef}>
-            <aside className="side-controls" ref={sizeControlRef} aria-label="Brush size">
-              <span className="control-icon"><ToolIcon name="brush" size={17} /></span>
-              <button className="control-value" type="button" aria-label="Open brush settings" onClick={() => setPanel(panel === 'brush' ? null : 'brush')}>{brushSize}<small>px</small></button>
-              <VerticalRange label="Brush size" minimum={BRUSH_MIN} maximum={BRUSH_MAX} value={brushSize} onChange={setBrushSize} />
-              <span className="control-label">Size</span>
-            </aside>
-            <div className="canvas-wrap" style={{ '--page-ratio': canvasSize.width / canvasSize.height, width: displaySize?.width, height: displaySize?.height, transform: `translate3d(${pan.x}px, ${pan.y}px, 0) scale(${zoom}) rotate(${canvasRotation}rad)` } as React.CSSProperties}>
-              <canvas
-                ref={visibleRef} width={canvasSize.width} height={canvasSize.height} aria-label="Drawing canvas"
-                className={tool === 'move' ? 'is-move-tool' : ''}
-                onPointerDown={pointerDown} onPointerMove={pointerMove} onPointerUp={pointerUp} onPointerCancel={pointerUp}
-                onPointerEnter={(event) => { if (tool === 'brush' || tool === 'eraser') setBrushCursor(pointFromClient(event.currentTarget, event.clientX, event.clientY)); }}
-                onPointerLeave={() => { if (!pointers.current.size) setBrushCursor(null); }}
-                onDoubleClick={resetView} onContextMenu={(event) => event.preventDefault()}
-              />
-              <canvas ref={fillPreviewCanvasRef} className={`fill-preview-canvas${fillPreviewActive ? ' is-active' : ''}`} width={canvasSize.width} height={canvasSize.height} aria-hidden="true" />
-              {brushCursor && (tool === 'brush' || tool === 'eraser') && <span
-                className={`brush-size-outline${tool === 'eraser' ? ' is-eraser' : ''}`}
-                style={{
-                  left: `${brushCursor.x / canvasSize.width * 100}%`,
-                  top: `${brushCursor.y / canvasSize.height * 100}%`,
-                  width: Math.max(5, brushSize * (displaySize?.width ?? canvasSize.width) / canvasSize.width),
-                  height: Math.max(5, brushSize * (displaySize?.width ?? canvasSize.width) / canvasSize.width),
-                }}
-                aria-hidden="true"
-              />}
-            </div>
-            <aside className="side-controls side-controls--right" ref={opacityControlRef} aria-label="Brush opacity">
-              <span className="control-icon"><ToolIcon name="droplet" size={17} /></span>
-              <button className="control-value" type="button" aria-label="Open brush settings" onClick={() => setPanel(panel === 'brush' ? null : 'brush')}>{Math.round(opacity * 100)}<small>%</small></button>
-              <VerticalRange label="Brush opacity" minimum={10} maximum={100} value={opacity * 100} onChange={(value) => setOpacity(value / 100)} />
-              <span className="control-label">Opacity</span>
-            </aside>
-          </div>
-        </div>
-      </section>
+      <CanvasWorkspace
+        message={message}
+        stayInLines={stayInLines}
+        selectedObject={selectedObject}
+        canvasRotation={canvasRotation}
+        zoom={zoom}
+        onRotateSelected={rotateSelected}
+        onDeleteSelected={deleteSelected}
+        onRotateCanvas={rotateCanvas}
+        onResetCanvasRotation={resetCanvasRotation}
+        onResetView={resetView}
+        onWheel={wheelCanvas}
+        onStagePointerDown={stagePointerDown}
+        onStagePointerMove={stagePointerMove}
+        onStagePointerUp={stagePointerUp}
+        onStagePointerCancel={stagePointerUp}
+        clusterRef={clusterRef}
+        sizeControlRef={sizeControlRef}
+        opacityControlRef={opacityControlRef}
+        brushSize={brushSize}
+        opacity={opacity}
+        onBrushSize={setBrushSize}
+        onOpacity={setOpacity}
+        onOpenBrush={() => setPanel(panel === 'brush' ? null : 'brush')}
+        canvasSize={canvasSize}
+        displaySize={displaySize}
+        pan={pan}
+        visibleRef={visibleRef}
+        fillPreviewRef={fillPreviewCanvasRef}
+        fillPreviewActive={fillPreviewActive}
+        tool={tool}
+        brushCursor={brushCursor}
+        onCanvasPointerDown={pointerDown}
+        onCanvasPointerMove={pointerMove}
+        onCanvasPointerUp={pointerUp}
+        onCanvasPointerCancel={pointerUp}
+        onCanvasPointerEnter={(event) => { if (tool === 'brush' || tool === 'eraser') setBrushCursor(pointFromClient(event.currentTarget, event.clientX, event.clientY)); }}
+        onCanvasPointerLeave={() => { if (!pointers.current.size) setBrushCursor(null); }}
+      />
 
-      <nav className="tool-dock" aria-label="Drawing tools">
-        <IconButton icon={<ToolIcon name="brush" />} label="Choose brush" active={tool === 'brush' || panel === 'brush'} onClick={() => { chooseTool('brush'); setPanel(panel === 'brush' ? null : 'brush'); }} />
-        <IconButton icon={<ToolIcon name="magic" />} label="Stay inside lines" active={stayInLines} className="line-safe-tool" onClick={toggleStayInLines} />
-        <IconButton icon={<ToolIcon name="eraser" />} label="Eraser" active={tool === 'eraser'} onClick={() => chooseTool('eraser')} />
-        <IconButton icon={<ToolIcon name="fill" />} label="Fill bucket" active={tool === 'fill'} onClick={() => { chooseTool('fill'); notify('Tap an area, or drag a color onto it'); }} />
-        <IconButton icon={<ToolIcon name="move" />} label="Move objects" active={tool === 'move'} onClick={() => chooseTool('move')} />
-        <IconButton icon={<ToolIcon name="shapes" />} label="Shapes" active={panel === 'shapes'} onClick={() => setPanel(panel === 'shapes' ? null : 'shapes')} />
-        <IconButton icon={<ToolIcon name="sticker" />} label="Stickers" active={panel === 'stickers'} onClick={() => setPanel(panel === 'stickers' ? null : 'stickers')} />
-        <IconButton icon={<ToolIcon name="reset" />} label="Reset page" className="reset-tool" onClick={resetPage} />
-      </nav>
+      <ToolDock
+        tool={tool}
+        panel={panel}
+        stayInLines={stayInLines}
+        onBrush={() => { chooseTool('brush'); setPanel(panel === 'brush' ? null : 'brush'); }}
+        onStayInLines={toggleStayInLines}
+        onEraser={() => chooseTool('eraser')}
+        onFill={() => { chooseTool('fill'); notify('Tap an area, or drag a color onto it'); }}
+        onMove={() => chooseTool('move')}
+        onShapes={() => setPanel(panel === 'shapes' ? null : 'shapes')}
+        onStickers={() => setPanel(panel === 'stickers' ? null : 'stickers')}
+        onReset={resetPage}
+      />
 
-      {panel === 'brush' && <section className="popover brush-popover" role="dialog" aria-label="Brush settings">
-        <header><div><strong>Brush studio</strong><small>Pick a favorite or paint with magic</small></div><button type="button" aria-label="Close brush settings" onClick={() => setPanel(null)}>×</button></header>
-        <div className="brush-library" aria-label="Brush types">
-          {(['Favorites', 'Paint & texture', 'Magic'] as const).map((group) => <section className="brush-group" key={group}>
-            <h3>{group}</h3>
-            <div className="brush-grid">
-              {brushPresets.filter((brush) => brush.group === group).map((brush) => <button
-                key={brush.id}
-                className={`brush-card${brushType === brush.id ? ' is-selected' : ''}`}
-                type="button"
-                aria-pressed={brushType === brush.id}
-                onClick={() => selectBrush(brush.id)}
-              >
-                <span className="brush-card__icon" aria-hidden="true">{brush.icon}</span>
-                <span><b>{brush.name}</b><small>{brush.description}</small></span>
-              </button>)}
-            </div>
-          </section>)}
-        </div>
-        <button className={`line-mode-setting${stayInLines ? ' is-on' : ''}`} type="button" aria-pressed={stayInLines} onClick={toggleStayInLines}>
-          <ToolIcon name="magic" size={23} /><span><b>Stay Inside Lines</b><small>Paint only inside the section you touch</small></span><em>{stayInLines ? 'On' : 'Off'}</em>
-        </button>
-        <div className="brush-preview"><BrushStrokePreview type={brushType} color={color} size={brushSize} alpha={Math.max(.12, opacity * flow)} /></div>
-        <label><span><b>Size</b><em>{brushSize}px</em></span><input className="polished-range" style={rangeStyle(brushSize, BRUSH_MIN, BRUSH_MAX)} type="range" min={BRUSH_MIN} max={BRUSH_MAX} value={brushSize} onChange={(event) => setBrushSize(Number(event.target.value))} /></label>
-        <label><span><b>Opacity</b><em>{Math.round(opacity * 100)}%</em></span><input className="polished-range" style={rangeStyle(opacity * 100, 10, 100)} type="range" min="10" max="100" value={opacity * 100} onChange={(event) => setOpacity(Number(event.target.value) / 100)} /></label>
-        <label><span><b>Flow</b><em>{Math.round(flow * 100)}%</em></span><input className="polished-range" style={rangeStyle(flow * 100, 5, 100)} type="range" min="5" max="100" value={flow * 100} onChange={(event) => setFlow(Number(event.target.value) / 100)} /></label>
-        <label><span><b>Smoothing</b><em>{Math.round(smoothing * 100)}%</em></span><input className="polished-range" style={rangeStyle(smoothing * 100, 0, 90)} type="range" min="0" max="90" value={smoothing * 100} onChange={(event) => setSmoothing(Number(event.target.value) / 100)} /></label>
-      </section>}
+      <FloatingPanels
+        panel={panel}
+        brushType={brushType}
+        color={color}
+        brushSize={brushSize}
+        brushMinimum={BRUSH_MIN}
+        brushMaximum={BRUSH_MAX}
+        opacity={opacity}
+        flow={flow}
+        smoothing={smoothing}
+        stayInLines={stayInLines}
+        tolerance={tolerance}
+        focusMode={focusMode}
+        leftHanded={leftHanded}
+        onClose={() => setPanel(null)}
+        onSelectBrush={selectBrush}
+        onToggleStayInLines={toggleStayInLines}
+        onBrushSize={setBrushSize}
+        onOpacity={setOpacity}
+        onFlow={setFlow}
+        onSmoothing={setSmoothing}
+        onAddShape={(shape) => addObject(shape)}
+        onAddSticker={(sticker) => addObject('sticker', sticker)}
+        onUpload={() => fileRef.current?.click()}
+        onSave={save}
+        onResetPage={resetPage}
+        onClearArt={clearArt}
+        onToggleFocus={() => void toggleFocusMode()}
+        onToggleHanded={() => { setLeftHanded((value) => !value); haptic(8); }}
+        onTolerance={setTolerance}
+      />
+      {panel === 'library' && <DrawingLibrary onClose={() => setPanel(null)} onSelect={loadLibraryPage} />}
 
-      {panel === 'shapes' && <div className="popover shapes-popover">
-        <button onClick={() => addObject('rectangle')}>▰<span>Rectangle</span></button>
-        <button onClick={() => addObject('circle')}>●<span>Circle</span></button>
-        <button onClick={() => addObject('star')}>★<span>Star</span></button>
-      </div>}
-      {panel === 'stickers' && <div className="popover sticker-popover">{stickers.map((item) => <button key={item} onClick={() => addObject('sticker', item)}>{item}</button>)}</div>}
-      {panel === 'actions' && <div className="popover actions-popover">
-        <button type="button" onClick={() => fileRef.current?.click()}>⬆️ <span>Upload picture</span></button>
-        <button type="button" onClick={save}>⬇️ <span>Save PNG</span></button>
-        <button type="button" onClick={toggleStayInLines}><ToolIcon name="magic" size={21} /> <span>{stayInLines ? 'Free drawing mode' : 'Stay inside lines'}</span></button>
-        <button type="button" onClick={resetPage}><ToolIcon name="reset" size={21} /> <span>Reset page</span></button>
-        <button type="button" onClick={clearArt}>✨ <span>New canvas</span></button>
-        <button type="button" onClick={() => void toggleFocusMode()}>⛶ <span>{focusMode ? 'Exit focus mode' : 'Focus mode'}</span></button>
-        <button type="button" onClick={() => { setLeftHanded((value) => !value); haptic(8); }}>↔️ <span>{leftHanded ? 'Right-handed layout' : 'Left-handed layout'}</span></button>
-        <label>Fill tolerance <b>{tolerance}</b><input type="range" min="5" max="80" value={tolerance} onChange={(event) => setTolerance(Number(event.target.value))} /></label>
-        <div className="input-hints"><span>✨ Stay Inside Lines locks paint to one section</span><span>🎨 Hold a color to start ColorDrop</span><span>✌️ Pinch to zoom • twist to rotate</span><span>🖱 Ctrl-wheel zoom • Space-drag pan</span></div>
-      </div>}
-      {panel === 'library' && <div className="library-backdrop" role="presentation" onPointerDown={(event) => { if (event.target === event.currentTarget) setPanel(null); }}>
-        <section className="library-panel" role="dialog" aria-modal="true" aria-labelledby="library-title">
-          <header>
-            <div><span className="eyebrow">Drawing library</span><h2 id="library-title">Pick a page</h2></div>
-            <button type="button" aria-label="Close drawing library" onClick={() => setPanel(null)}>×</button>
-          </header>
-          <div className="category-heading"><span>🐾</span><div><h3>Paw Patrol</h3><p>Five adventures ready to color</p></div></div>
-          <div className="drawing-grid">
-            {pawPatrolPages.map((page) => <button key={page.file} type="button" className="drawing-card" onClick={() => loadLibraryPage(page.src, page.title)}>
-              <span className="drawing-card__preview"><img src={page.src} alt="" loading="lazy" /></span>
-              <strong>{page.title}</strong>
-              <small>Tap to color</small>
-            </button>)}
-          </div>
-          <div className="category-heading category-heading--magic"><span>🦄</span><div><h3>Unicorns &amp; Princesses</h3><p>Magical friends and underwater adventures</p></div></div>
-          <div className="drawing-grid drawing-grid--landscape">
-            {unicornPrincessPages.map((page) => <button key={page.file} type="button" className="drawing-card" onClick={() => loadLibraryPage(page.src, page.title)}>
-              <span className="drawing-card__preview"><img src={page.src} alt="" loading="lazy" /></span>
-              <strong>{page.title}</strong>
-              <small>Tap to color</small>
-            </button>)}
-          </div>
-          <div className="category-heading category-heading--stitch"><span>🌺</span><div><h3>Stitch</h3><p>Eight playful adventures ready to color</p></div></div>
-          <div className="drawing-grid drawing-grid--portrait">
-            {stitchPages.map((page) => <button key={page.file} type="button" className="drawing-card" onClick={() => loadLibraryPage(page.src, page.title)}>
-              <span className="drawing-card__preview"><img src={page.src} alt="" loading="lazy" /></span>
-              <strong>{page.title}</strong>
-              <small>Tap to color</small>
-            </button>)}
-          </div>
-        </section>
-      </div>}
-
-      <footer className="palette" aria-label="Colors and magic brushes">
-        <div className="palette__scroller">
-          {magicBrushes.map((brush) => <button
-            key={brush.id}
-            type="button"
-            className={`magic-brush-button${tool === 'brush' && brushType === brush.id ? ' is-selected' : ''}`}
-            aria-label={`Select ${brush.name} brush`}
-            title={`${brush.name} brush`}
-            onClick={() => selectBrush(brush.id)}
-          ><MagicBrushPreview type={brush.id} color={color} /></button>)}
-          <span className="magic-brush-divider" aria-hidden="true" />
-          {colors.map((swatchColor) => <button key={swatchColor} type="button" className={`swatch${color === swatchColor ? ' is-selected' : ''}`} style={{ backgroundColor: swatchColor }} aria-label={`Select or drag color ${swatchColor}`} onPointerDown={(event) => startColorDrag(event, swatchColor)} />)}
-          <label className="swatch swatch--picker" aria-label="Choose a custom color">＋<input type="color" value={color} onChange={(event) => setColor(event.target.value)} /></label>
-        </div>
-      </footer>
+      <Palette tool={tool} brushType={brushType} color={color} onBrush={selectBrush} onColorPointerDown={startColorDrag} onCustomColor={setColor} />
       <input ref={fileRef} className="visually-hidden" type="file" accept="image/png,image/jpeg,image/webp" onChange={(event) => { const file = event.target.files?.[0]; if (file) upload(file); event.target.value = ''; }} />
       {dragColor && <div className="color-drop-orb" style={{ left: dragColor.x, top: dragColor.y, backgroundColor: dragColor.color }} />}
     </main>
