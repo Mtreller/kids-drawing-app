@@ -213,7 +213,6 @@ export function App() {
   const [canvasRotation, setCanvasRotation] = useState(0);
   const [historyState, setHistoryState] = useState({ undo: false, redo: false });
   const [focusMode, setFocusMode] = useState(false);
-  const [showIosFocusHelp, setShowIosFocusHelp] = useState(false);
   const [drawingActive, setDrawingActive] = useState(false);
   const [leftHanded, setLeftHanded] = useState(() => {
     try { return window.localStorage.getItem('color-pop-left-handed') === 'true'; }
@@ -249,7 +248,10 @@ export function App() {
       document.removeEventListener('webkitfullscreenchange', fullscreenChanged);
     };
   }, []);
-  useEffect(() => () => { if (hideTimer.current) window.clearTimeout(hideTimer.current); }, []);
+  useEffect(() => () => {
+    if (hideTimer.current) window.clearTimeout(hideTimer.current);
+    document.body.classList.remove('ios-focus-fallback');
+  }, []);
 
   useLayoutEffect(() => {
     const cluster = clusterRef.current;
@@ -467,7 +469,6 @@ export function App() {
   const toggleFocusMode = async () => {
     const entering = !focusMode;
     setFocusMode(entering);
-    if (!entering) setShowIosFocusHelp(false);
     setPanel(null);
     setDrawingActive(false);
     haptic(entering ? [8, 35, 8] : 6);
@@ -494,8 +495,18 @@ export function App() {
     }
     await new Promise<void>((resolve) => requestAnimationFrame(() => resolve()));
     const fullscreenActive = Boolean(activeFullscreenElement());
-    if (entering && fullscreenActive) notify('Full screen on');
-    if (entering && isIos && !isStandalone && !fullscreenActive) setShowIosFocusHelp(true);
+    if (!entering) {
+      document.body.classList.remove('ios-focus-fallback');
+      window.scrollTo(0, 0);
+    } else if (fullscreenActive || isStandalone) {
+      notify('Full screen on');
+    } else if (isIos) {
+      document.body.classList.add('ios-focus-fallback');
+      window.setTimeout(() => window.scrollTo({ top: 1, behavior: 'smooth' }), 60);
+      notify('Focus mode on • Swipe up once if Safari bars remain visible');
+    } else {
+      notify('Focus mode on');
+    }
   };
 
   const selectBrush = (nextBrush: BrushType) => {
@@ -1436,15 +1447,6 @@ export function App() {
         </div>
       </footer>
       <input ref={fileRef} className="visually-hidden" type="file" accept="image/png,image/jpeg,image/webp" onChange={(event) => { const file = event.target.files?.[0]; if (file) upload(file); event.target.value = ''; }} />
-      {showIosFocusHelp && <div className="ios-focus-backdrop" role="presentation" onPointerDown={(event) => { if (event.target === event.currentTarget) setShowIosFocusHelp(false); }}>
-        <section className="ios-focus-help" role="dialog" aria-modal="true" aria-labelledby="ios-focus-title">
-          <span className="ios-focus-help__icon" aria-hidden="true">↥</span>
-          <div><span className="eyebrow">iPhone &amp; iPad</span><h2 id="ios-focus-title">Open truly full screen</h2></div>
-          <p>Safari keeps its address bar and tabs visible. Tap <b>Share</b>, choose <b>Add to Home Screen</b>, then open <b>Color Pop</b> from its new icon.</p>
-          <p className="ios-focus-help__note">Focus mode will then use the whole screen without Safari controls.</p>
-          <button type="button" onClick={() => setShowIosFocusHelp(false)}>Got it</button>
-        </section>
-      </div>}
       {dragColor && <div className="color-drop-orb" style={{ left: dragColor.x, top: dragColor.y, backgroundColor: dragColor.color }} />}
     </main>
   );
