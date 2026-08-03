@@ -52,6 +52,7 @@ button { border: 0; color: inherit; font: inherit; -webkit-tap-highlight-color: 
 .library-button { grid-auto-flow: column; gap: 8px; padding: 0 16px; color: #6046c5; font-weight: 850; background: #eee8ff; }
 
 .workspace { position: relative; min-height: 0; display: grid; place-items: center; padding: 18px 74px 78px; overflow: hidden; }
+.canvas-stage { width: 100%; height: 100%; display: grid; place-items: center; transform-origin: center; will-change: transform; }
 .canvas-wrap {
   position: relative;
   width: min(100%, calc((100dvh - 190px) * 4 / 3), 1100px);
@@ -83,6 +84,7 @@ button { border: 0; color: inherit; font: inherit; -webkit-tap-highlight-color: 
 .control-value { min-width: 46px; padding: 6px 8px; border-radius: 12px; color: white; font-size: 11px; font-weight: 900; text-align: center; background: #342e47; }
 .control-label { max-width: 52px; color: #766f82; font-size: 10px; font-weight: 800; text-align: center; }
 .status-pill { position: absolute; z-index: 4; left: 50%; bottom: 16px; max-width: min(75%, 520px); padding: 9px 15px; overflow: hidden; border-radius: 999px; color: white; font-size: 12px; font-weight: 800; text-overflow: ellipsis; white-space: nowrap; background: rgb(37 32 57 / 84%); backdrop-filter: blur(12px); transform: translateX(-50%); pointer-events: none; }
+.zoom-reset { position: absolute; z-index: 5; left: max(14px, env(safe-area-inset-left)); bottom: 16px; min-width: 52px; height: 38px; padding: 0 10px; border-radius: 13px; color: #5f4ab5; font-size: 11px; font-weight: 900; background: rgb(255 255 255 / 90%); box-shadow: 0 7px 20px rgb(47 35 70 / 16%); backdrop-filter: blur(12px); }
 
 .tool-dock {
   position: fixed;
@@ -164,6 +166,7 @@ button { border: 0; color: inherit; font: inherit; -webkit-tap-highlight-color: 
   .swatch { width: 38px; height: 38px; }
   .shapes-popover, .sticker-popover { bottom: 132px; }
   .status-pill { bottom: 8px; }
+  .zoom-reset { left: 6px; bottom: 8px; min-width: 44px; height: 34px; }
   .library-backdrop { padding: 8px; }
   .library-panel { max-height: calc(100dvh - 16px); padding: 18px; border-radius: 25px; }
   .drawing-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 11px; }
@@ -182,6 +185,7 @@ button { border: 0; color: inherit; font: inherit; -webkit-tap-highlight-color: 
   .palette__scroller { justify-content: center; pointer-events: auto; }
   .swatch { width: 34px; height: 34px; }
   .status-pill { bottom: 5px; }
+  .zoom-reset { bottom: 5px; }
   .shapes-popover, .sticker-popover { left: auto; right: 76px; bottom: 50%; max-width: 280px; transform: translateY(50%); }
 }
 

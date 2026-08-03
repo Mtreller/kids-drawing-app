@@ -20,6 +20,7 @@ const pawPatrolPages = [
 
 type DragColor = { color: string; x: number; y: number } | null;
 type Gesture = { distance: number; angle: number; width: number; height: number; rotation: number };
+type ViewGesture = { distance: number; center: Point; zoom: number; pan: Point };
 
 function IconButton({ icon, label, active = false, disabled = false, onClick }: {
   icon: string; label: string; active?: boolean; disabled?: boolean; onClick?: () => void;
@@ -36,9 +37,15 @@ export function App() {
   const backingRef = useRef<HTMLCanvasElement | null>(null);
   const fileRef = useRef<HTMLInputElement>(null);
   const pointers = useRef(new Map<number, Point>());
+  const screenPointers = useRef(new Map<number, Point>());
   const lastPoint = useRef<Point | null>(null);
+  const strokeStarted = useRef(false);
+  const fillTap = useRef<Point | null>(null);
+  const fillTapMoved = useRef(false);
   const dragOffset = useRef<Point | null>(null);
   const gesture = useRef<Gesture | null>(null);
+  const viewGesture = useRef<ViewGesture | null>(null);
+  const navigatingCanvas = useRef(false);
   const objectChanged = useRef(false);
   const objectsRef = useRef<ArtObject[]>([]);
   const history = useRef<Snapshot[]>([]);
@@ -55,6 +62,8 @@ export function App() {
   const [dragColor, setDragColor] = useState<DragColor>(null);
   const [message, setMessage] = useState('Choose a tool and start creating!');
   const [revision, setRevision] = useState(0);
+  const [zoom, setZoom] = useState(1);
+  const [pan, setPan] = useState<Point>({ x: 0, y: 0 });
   const [historyState, setHistoryState] = useState({ undo: false, redo: false });
 
   useEffect(() => { objectsRef.current = objects; }, [objects]);
@@ -127,14 +136,15 @@ export function App() {
     window.setTimeout(() => setMessage('Choose a tool and start creating!'), 2400);
   };
 
-  const drawLine = (from: Point, to: Point) => {
+  const drawLine = (from: Point, to: Point, pointerType = 'touch', pressure = 1) => {
     const context = backingRef.current?.getContext('2d');
     if (!context) return;
+    const pressureScale = pointerType === 'pen' ? .3 + Math.max(.05, pressure) * .7 : 1;
     context.save();
     context.globalAlpha = opacity;
     context.globalCompositeOperation = tool === 'eraser' ? 'destination-out' : 'source-over';
     context.strokeStyle = color;
-    context.lineWidth = brushSize;
+    context.lineWidth = brushSize * pressureScale;
     context.lineCap = 'round';
     context.lineJoin = 'round';
     context.beginPath();
@@ -142,7 +152,16 @@ export function App() {
     context.lineTo(to.x, to.y);
     context.stroke();
     context.restore();
+    strokeStarted.current = true;
     setRevision((value) => value + 1);
+  };
+
+  const resetView = () => {
+    setZoom(1);
+    setPan({ x: 0, y: 0 });
+    viewGesture.current = null;
+    navigatingCanvas.current = false;
+    notify('Canvas fitted to the screen');
   };
 
   const fillAt = (point: Point, fillColor = color) => {
@@ -166,8 +185,31 @@ export function App() {
     canvas.setPointerCapture(event.pointerId);
     const point = canvasPoint(canvas, event.clientX, event.clientY);
     pointers.current.set(event.pointerId, point);
+    screenPointers.current.set(event.pointerId, { x: event.clientX, y: event.clientY });
 
-    if (tool === 'fill') { fillAt(point); return; }
+    if (screenPointers.current.size === 2 && tool !== 'move') {
+      if (strokeStarted.current) pushHistory();
+      const [a, b] = [...screenPointers.current.values()];
+      viewGesture.current = {
+        distance: Math.max(1, Math.hypot(b.x - a.x, b.y - a.y)),
+        center: { x: (a.x + b.x) / 2, y: (a.y + b.y) / 2 },
+        zoom,
+        pan: { ...pan },
+      };
+      lastPoint.current = null;
+      strokeStarted.current = false;
+      fillTap.current = null;
+      fillTapMoved.current = true;
+      navigatingCanvas.current = true;
+      setMessage('Pinch to zoom • drag two fingers to move');
+      return;
+    }
+
+    if (tool === 'fill') {
+      fillTap.current = point;
+      fillTapMoved.current = false;
+      return;
+    }
     if (tool === 'move') {
       if (pointers.current.size > 1 && selectedId) return;
       const target = hitObject(objectsRef.current, point);
@@ -182,7 +224,7 @@ export function App() {
     }
     if (pointers.current.size === 1) {
       lastPoint.current = point;
-      drawLine(point, { x: point.x + .1, y: point.y + .1 });
+      strokeStarted.current = false;
     }
   };
 
@@ -190,6 +232,29 @@ export function App() {
     if (!pointers.current.has(event.pointerId)) return;
     const point = canvasPoint(event.currentTarget, event.clientX, event.clientY);
     pointers.current.set(event.pointerId, point);
+    screenPointers.current.set(event.pointerId, { x: event.clientX, y: event.clientY });
+
+    if (screenPointers.current.size >= 2 && tool !== 'move') {
+      const active = [...screenPointers.current.values()];
+      const [a, b] = active;
+      const distance = Math.max(1, Math.hypot(b.x - a.x, b.y - a.y));
+      const center = { x: (a.x + b.x) / 2, y: (a.y + b.y) / 2 };
+      if (!viewGesture.current) viewGesture.current = { distance, center, zoom, pan: { ...pan } };
+      const nextZoom = Math.max(1, Math.min(4, viewGesture.current.zoom * distance / viewGesture.current.distance));
+      const maxPanX = (nextZoom - 1) * 360;
+      const maxPanY = (nextZoom - 1) * 280;
+      setZoom(nextZoom);
+      setPan({
+        x: Math.max(-maxPanX, Math.min(maxPanX, viewGesture.current.pan.x + center.x - viewGesture.current.center.x)),
+        y: Math.max(-maxPanY, Math.min(maxPanY, viewGesture.current.pan.y + center.y - viewGesture.current.center.y)),
+      });
+      return;
+    }
+
+    if (tool === 'fill' && fillTap.current && Math.hypot(point.x - fillTap.current.x, point.y - fillTap.current.y) > 12) {
+      fillTapMoved.current = true;
+      return;
+    }
 
     if (tool === 'move' && selectedId) {
       const selected = objectsRef.current.find((object) => object.id === selectedId);
@@ -221,20 +286,38 @@ export function App() {
       return;
     }
     if ((tool === 'brush' || tool === 'eraser') && lastPoint.current && pointers.current.size === 1) {
-      drawLine(lastPoint.current, point);
+      drawLine(lastPoint.current, point, event.pointerType, event.pressure || 1);
       lastPoint.current = point;
     }
   };
 
   const pointerUp = (event: React.PointerEvent<HTMLCanvasElement>) => {
+    const hadMultiplePointers = screenPointers.current.size > 1;
+    const releasedPoint = pointers.current.get(event.pointerId) ?? null;
     pointers.current.delete(event.pointerId);
+    screenPointers.current.delete(event.pointerId);
+    if (screenPointers.current.size < 2) viewGesture.current = null;
+
+    if (tool === 'fill' && fillTap.current && !fillTapMoved.current && !hadMultiplePointers) {
+      fillAt(fillTap.current);
+    }
     if (!pointers.current.size) {
-      if ((tool === 'brush' || tool === 'eraser') && lastPoint.current) pushHistory();
+      if ((tool === 'brush' || tool === 'eraser') && lastPoint.current && !strokeStarted.current && releasedPoint && !hadMultiplePointers) {
+        drawLine(lastPoint.current, { x: lastPoint.current.x + .1, y: lastPoint.current.y + .1 }, event.pointerType, event.pressure || 1);
+      }
+      if ((tool === 'brush' || tool === 'eraser') && strokeStarted.current) pushHistory();
       if (tool === 'move' && objectChanged.current) pushHistory();
       lastPoint.current = null;
+      strokeStarted.current = false;
+      fillTap.current = null;
+      fillTapMoved.current = false;
       dragOffset.current = null;
       gesture.current = null;
       objectChanged.current = false;
+      if (navigatingCanvas.current) {
+        navigatingCanvas.current = false;
+        notify(`Canvas zoom ${Math.round(zoom * 100)}%`);
+      }
     }
   };
 
@@ -304,6 +387,8 @@ export function App() {
       setObjects([]);
       setSelectedId(null);
       setRevision((value) => value + 1);
+      setZoom(1);
+      setPan({ x: 0, y: 0 });
       window.setTimeout(pushHistory);
       setPanel(null);
       notify(successMessage);
@@ -382,6 +467,7 @@ export function App() {
           <input aria-label="Brush size" type="range" min="3" max="90" value={brushSize} onChange={(event) => setBrushSize(Number(event.target.value))} />
           <span className="control-label">Size</span>
         </aside>
+        <div className="canvas-stage" style={{ transform: `translate3d(${pan.x}px, ${pan.y}px, 0) scale(${zoom})` }}>
         <div className="canvas-wrap">
           <canvas
             ref={visibleRef} width={ART_WIDTH} height={ART_HEIGHT} aria-label="Drawing canvas"
@@ -389,12 +475,14 @@ export function App() {
           />
           {selectedId && <button className="delete-object" type="button" onClick={deleteSelected} aria-label="Delete selected object">×</button>}
         </div>
+        </div>
         <aside className="side-controls side-controls--right" aria-label="Brush opacity">
           <span className="control-value">{Math.round(opacity * 100)}%</span>
           <input aria-label="Brush opacity" type="range" min="10" max="100" value={opacity * 100} onChange={(event) => setOpacity(Number(event.target.value) / 100)} />
           <span className="control-label">Opacity</span>
         </aside>
         <div className="status-pill" role="status">{message}</div>
+        <button className="zoom-reset" type="button" onClick={resetView} aria-label="Fit canvas to screen">{Math.round(zoom * 100)}%</button>
       </section>
 
       <nav className="tool-dock" aria-label="Drawing tools">
