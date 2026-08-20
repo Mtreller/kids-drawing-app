@@ -123,12 +123,12 @@ body.ios-focus-fallback .app-shell { position: sticky; top: 0; }
   gap: 7px;
   width: 100%;
 }
-.vertical-range-wrap { position: relative; width: 32px; height: clamp(110px, 22vh, 180px); }
+.vertical-range-wrap { position: relative; width: 32px; height: clamp(150px, 28vh, 240px); }
 .side-controls input[type="range"] {
   position: absolute;
   top: 50%;
   left: 50%;
-  width: clamp(110px, 22vh, 180px);
+  width: clamp(150px, 28vh, 240px);
   height: 24px;
   margin: 0;
   transform: translate(-50%, -50%) rotate(-90deg);
@@ -372,13 +372,13 @@ html:-webkit-full-screen .app-shell .workspace-hud {
 .start-choice__copy small { color: #81798c; font-size: 12px; font-weight: 700; }
 
 .palette { min-width: 0; padding: 10px max(14px, env(safe-area-inset-right)) max(10px, env(safe-area-inset-bottom)) max(14px, env(safe-area-inset-left)); border-top: 1px solid #e3ddeb; background: rgb(255 255 255 / 90%); }
-.palette__scroller { display: flex; justify-content: flex-start; gap: 11px; overflow-x: auto; overscroll-behavior-x: contain; scrollbar-width: none; touch-action: pan-x; }
+.palette__scroller { display: flex; min-width: 0; justify-content: flex-start; gap: 11px; overflow-x: auto; overscroll-behavior-x: contain; scrollbar-width: none; touch-action: pan-x; -webkit-overflow-scrolling: touch; }
 .palette__scroller::-webkit-scrollbar { display: none; }
-.magic-brush-button { flex: 0 0 auto; width: 42px; height: 42px; padding: 0; overflow: hidden; border: 3px solid white; border-radius: 13px; background: linear-gradient(145deg, #f7f4fb, #eae4f3); box-shadow: 0 0 0 1px #d8d1df, 0 5px 12px rgb(44 33 64 / 14%); cursor: pointer; touch-action: none; transition: transform .16s ease, box-shadow .16s ease; }
+.magic-brush-button { flex: 0 0 auto; width: 42px; height: 42px; padding: 0; overflow: hidden; border: 3px solid white; border-radius: 13px; background: linear-gradient(145deg, #f7f4fb, #eae4f3); box-shadow: 0 0 0 1px #d8d1df, 0 5px 12px rgb(44 33 64 / 14%); cursor: pointer; touch-action: pan-x; transition: transform .16s ease, box-shadow .16s ease; }
 .magic-brush-button canvas { width: 100%; height: 100%; display: block; pointer-events: none; }
 .magic-brush-button.is-selected { transform: translateY(-3px) scale(1.08); box-shadow: 0 0 0 3px #755cff, 0 8px 16px rgb(44 33 64 / 20%); }
 .magic-brush-divider { width: 1px; height: 34px; flex: 0 0 auto; align-self: center; margin-inline: 2px; background: #d8d1df; }
-.swatch { flex: 0 0 auto; width: 42px; height: 42px; border: 4px solid white; border-radius: 50%; box-shadow: 0 0 0 1px #d8d1df, 0 5px 12px rgb(44 33 64 / 14%); cursor: pointer; touch-action: none; user-select: none; -webkit-user-select: none; -webkit-user-drag: none; -webkit-touch-callout: none; transition: transform .16s ease; }
+.swatch { flex: 0 0 auto; width: 42px; height: 42px; border: 4px solid white; border-radius: 50%; box-shadow: 0 0 0 1px #d8d1df, 0 5px 12px rgb(44 33 64 / 14%); cursor: pointer; touch-action: pan-x; user-select: none; -webkit-user-select: none; -webkit-user-drag: none; -webkit-touch-callout: none; transition: transform .16s ease; }
 .swatch.is-selected { transform: translateY(-3px) scale(1.08); box-shadow: 0 0 0 3px #755cff, 0 8px 16px rgb(44 33 64 / 20%); }
 .swatch--picker { color: #716a7c; font-size: 24px; background: conic-gradient(#ff5c77, #ffd93d, #52d681, #3eb8f0, #755cff, #ff5c77); }
 .swatch--picker { position: relative; display: grid; place-items: center; overflow: hidden; }
@@ -477,8 +477,8 @@ html:-webkit-full-screen .app-shell .workspace-hud {
   .app-shell.is-focus.is-left-handed .side-controls:not(.side-controls--right) { left: auto; right: 0; }
   .app-shell.is-left-handed .side-controls--right,
   .app-shell.is-focus.is-left-handed .side-controls--right { right: auto; left: 0; }
-  .side-controls .vertical-range-wrap { height: clamp(92px, 19vh, 142px); }
-  .side-controls input[type="range"] { width: clamp(92px, 19vh, 142px); }
+  .side-controls .vertical-range-wrap { height: clamp(168px, 36vh, 280px); }
+  .side-controls input[type="range"] { width: clamp(168px, 36vh, 280px); }
   .side-controls .control-icon { width: 32px; height: 32px; }
   .side-controls .control-value { width: 47px; font-size: 11px; }
   .side-controls .control-label { font-size: 8px; }
@@ -518,7 +518,7 @@ html:-webkit-full-screen .app-shell .workspace-hud {
     box-shadow: 0 16px 40px rgb(58 41 87 / 20%);
     backdrop-filter: blur(22px);
   }
-  .palette__scroller { justify-content: flex-start; padding: 2px; touch-action: none; }
+  .palette__scroller { justify-content: flex-start; padding: 2px; touch-action: pan-x; }
   .swatch, .magic-brush-button { width: 40px; height: 40px; }
   .app-shell.is-drawing .tool-dock { transform: translateY(12px); }
   .app-shell.is-drawing .palette { transform: translateY(10px); }
@@ -603,8 +603,8 @@ html:-webkit-full-screen .app-shell .workspace-hud {
   }
   .side-controls .control-icon { width: 28px; height: 28px; }
   .side-controls .control-value { width: 43px; padding: 5px 2px; font-size: 10px; }
-  .side-controls .vertical-range-wrap { height: clamp(68px, 22vh, 92px); }
-  .side-controls input[type="range"] { width: clamp(68px, 22vh, 92px); }
+  .side-controls .vertical-range-wrap { height: clamp(120px, 42vh, 180px); }
+  .side-controls input[type="range"] { width: clamp(120px, 42vh, 180px); }
   .side-controls .control-label { font-size: 7px; }
   .side-controls.is-open { padding: 5px 1px 6px; border-radius: 17px; }
   .side-controls.is-open .side-controls__body { width: 48px; grid-template-rows: 28px auto auto auto; gap: 3px; }
@@ -637,10 +637,10 @@ html:-webkit-full-screen .app-shell .workspace-hud {
     backdrop-filter: blur(16px);
   }
   .app-shell.is-left-handed .palette { right: max(88px, calc(env(safe-area-inset-right) + 82px)); left: auto; }
-  .palette__scroller { height: 100%; flex-direction: column; justify-content: flex-start; gap: 7px; padding: 1px; overflow-x: hidden; overflow-y: auto; touch-action: none; pointer-events: auto; }
-  .swatch, .magic-brush-button { width: 34px; height: 34px; border-width: 3px; }
+  .palette__scroller { height: 100%; flex-direction: column; justify-content: flex-start; gap: 7px; padding: 1px; overflow-x: hidden; overflow-y: auto; overscroll-behavior-y: contain; touch-action: pan-y; pointer-events: auto; -webkit-overflow-scrolling: touch; }
+  .swatch, .magic-brush-button { width: 34px; height: 34px; border-width: 3px; touch-action: pan-y; }
   .magic-brush-divider { width: 28px; height: 1px; margin: 2px 0; }
-  .palette .swatch { touch-action: none; }
+  .palette .swatch { touch-action: pan-y; }
   .shapes-popover, .sticker-popover, .app-shell.is-left-handed .shapes-popover, .app-shell.is-left-handed .sticker-popover { left: auto; right: 140px; bottom: 50%; max-width: 280px; transform: translateY(50%); }
   .brush-popover { left: 8px; right: auto; bottom: 50%; width: min(560px, calc(100vw - 160px)); max-height: calc(100dvh - 12px); overflow-y: auto; transform: translateY(50%); }
   .brush-library { gap: 7px; margin-bottom: 7px; }
