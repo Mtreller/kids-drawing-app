@@ -145,27 +145,84 @@ export async function setActiveProfileId(profileId: string | null) {
   });
 }
 
+type StoredBlob = { mime: string; data: ArrayBuffer };
+
+async function freezeBlob(value: string | Blob | undefined) {
+  if (value == null) return undefined;
+  if (typeof value === 'string') return value;
+  return { mime: value.type || 'image/png', data: await value.arrayBuffer() } satisfies StoredBlob;
+}
+
+function thawBlob(value: unknown): string | Blob | undefined {
+  if (value == null) return undefined;
+  if (typeof value === 'string') return value;
+  if (typeof Blob !== 'undefined' && value instanceof Blob) return value;
+  if (typeof value === 'object' && value && 'data' in value) {
+    const stored = value as StoredBlob;
+    return new Blob([stored.data], { type: stored.mime || 'image/png' });
+  }
+  return undefined;
+}
+
+function thawSnapshot(snapshot: Snapshot): Snapshot {
+  return {
+    ...snapshot,
+    bitmap: thawBlob(snapshot.bitmap) ?? snapshot.bitmap,
+    baseBitmap: thawBlob(snapshot.baseBitmap),
+  };
+}
+
+function thawDrawing(record: SavedDrawing | undefined) {
+  if (!record) return undefined;
+  const thumbnail = thawBlob(record.thumbnail);
+  return {
+    ...record,
+    thumbnail: thumbnail instanceof Blob ? thumbnail : new Blob(),
+    snapshot: thawSnapshot(record.snapshot),
+  } satisfies SavedDrawing;
+}
+
+function thawSummary(record: SavedDrawing): DrawingSummary {
+  const thumbnail = thawBlob(record.thumbnail);
+  return {
+    id: record.id,
+    profileId: record.profileId,
+    title: record.title,
+    thumbnail: thumbnail instanceof Blob ? thumbnail : new Blob(),
+    createdAt: record.createdAt,
+    updatedAt: record.updatedAt,
+  };
+}
+
 export async function listDrawingSummaries(profileId: string) {
   return withDatabase(async (database) => {
     const records = await requestToPromise(
-      database.transaction(DRAWING_STORE, 'readonly').objectStore(DRAWING_STORE).index('profileId').getAll(profileId),
+      database.transaction(DRAWING_STORE, 'readonly').objectStore(DRAWING_STORE).index('profileId').getAll(IDBKeyRange.only(profileId)),
     ) as SavedDrawing[];
-    return records
-      .map(({ snapshot: _snapshot, ...summary }) => summary)
-      .sort((left, right) => right.updatedAt - left.updatedAt);
+    return records.map(thawSummary).sort((left, right) => right.updatedAt - left.updatedAt);
   });
 }
 
 export async function getDrawing(id: string) {
   return withDatabase(async (database) => {
-    return await requestToPromise(database.transaction(DRAWING_STORE, 'readonly').objectStore(DRAWING_STORE).get(id)) as SavedDrawing | undefined;
+    const record = await requestToPromise(database.transaction(DRAWING_STORE, 'readonly').objectStore(DRAWING_STORE).get(id)) as SavedDrawing | undefined;
+    return thawDrawing(record);
   });
 }
 
 export async function saveDrawing(drawing: SavedDrawing) {
+  const stored = {
+    ...drawing,
+    thumbnail: await freezeBlob(drawing.thumbnail),
+    snapshot: {
+      ...drawing.snapshot,
+      bitmap: await freezeBlob(drawing.snapshot.bitmap),
+      baseBitmap: await freezeBlob(drawing.snapshot.baseBitmap),
+    },
+  };
   return withDatabase(async (database) => {
     const transaction = database.transaction(DRAWING_STORE, 'readwrite');
-    transaction.objectStore(DRAWING_STORE).put(drawing);
+    await requestToPromise(transaction.objectStore(DRAWING_STORE).put(stored));
     await transactionDone(transaction);
   });
 }
@@ -181,7 +238,8 @@ export async function deleteDrawing(id: string) {
 async function loadLegacyArtwork() {
   return withDatabase(async (database) => {
     if (!database.objectStoreNames.contains(ARTWORK_STORE)) return undefined;
-    return await requestToPromise(database.transaction(ARTWORK_STORE, 'readonly').objectStore(ARTWORK_STORE).get(LEGACY_CURRENT_KEY)) as Snapshot | undefined;
+    const snapshot = await requestToPromise(database.transaction(ARTWORK_STORE, 'readonly').objectStore(ARTWORK_STORE).get(LEGACY_CURRENT_KEY)) as Snapshot | undefined;
+    return snapshot?.bitmap ? thawSnapshot(snapshot) : undefined;
   });
 }
 
@@ -217,7 +275,10 @@ export async function makeThumbnail(snapshot: Snapshot) {
   return new Promise<Blob>((resolve, reject) => {
     canvas.toBlob((blob) => {
       if (blob) resolve(blob);
-      else reject(new Error('Thumbnail could not be compressed.'));
+      else canvas.toBlob((png) => {
+        if (png) resolve(png);
+        else reject(new Error('Thumbnail could not be compressed.'));
+      }, 'image/png');
     }, 'image/jpeg', .72);
   });
 }
