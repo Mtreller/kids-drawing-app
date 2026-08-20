@@ -3,6 +3,8 @@ import type { Point } from '../drawing';
 
 export type DragColor = { color: string; x: number; y: number } | null;
 
+const isLandscapePalette = () => window.matchMedia('(max-height: 600px) and (orientation: landscape)').matches;
+
 export function useColorDropGesture({
   canvasRef, pointFromClient, previewColorDrop, clearFillPreview, fillAt,
   setColor, activateFillTool, closePanels, stopDrawing, setDragColor, setMessage,
@@ -30,14 +32,20 @@ export function useColorDropGesture({
     if (event.pointerType === 'mouse' && event.button !== 0) return;
     cleanupRef.current?.();
     const { pointerId, pointerType, clientX: startX, clientY: startY } = event;
-    const verticalPalette = window.matchMedia('(max-height: 600px) and (orientation: landscape)').matches;
+    const verticalPalette = isLandscapePalette();
     const source = event.currentTarget as HTMLElement;
     const paletteScroller = source.closest<HTMLElement>('.palette__scroller');
+    const fingerLift = pointerType === 'touch' ? 58 : 0;
     let filling = false;
     let scrolling = false;
     let lastX = startX;
     let lastY = startY;
-    if (verticalPalette && pointerType === 'touch') event.preventDefault();
+
+    const aim = (x: number, y: number) => verticalPalette
+      ? { x: x - fingerLift, y }
+      : { x, y: y - fingerLift };
+
+    if (pointerType === 'touch') event.preventDefault();
     try { source.setPointerCapture(pointerId); } catch { /* Window listeners still keep the drag reliable. */ }
     clearBrushCursor();
 
@@ -48,13 +56,14 @@ export function useColorDropGesture({
       activateFillTool();
       closePanels();
       stopDrawing();
-      haptic([8, 28, 8]);
-      const fingerLift = pointerType === 'touch' ? 48 : 0;
-      setDragColor({ color: swatchColor, x: lastX - (verticalPalette ? fingerLift : 0), y: lastY - (verticalPalette ? 0 : fingerLift) });
-      setMessage('ColorDrop ready • drag to a section and release');
+      haptic([8, 22, 8]);
+      const point = aim(lastX, lastY);
+      setDragColor({ color: swatchColor, x: point.x, y: point.y });
+      setMessage('Drag onto a section, then let go to fill');
+      previewColorDrop(point.x, point.y, swatchColor);
     };
 
-    const holdTimer = window.setTimeout(activateFill, pointerType === 'touch' ? 340 : 420);
+    const holdTimer = window.setTimeout(activateFill, pointerType === 'touch' ? 160 : 280);
     const clearHold = () => window.clearTimeout(holdTimer);
     const cleanup = () => {
       document.removeEventListener('pointermove', move, true);
@@ -65,35 +74,36 @@ export function useColorDropGesture({
     };
     const move = (moveEvent: PointerEvent) => {
       if (moveEvent.pointerId !== pointerId) return;
+      const previousX = lastX;
       const previousY = lastY;
       lastX = moveEvent.clientX;
       lastY = moveEvent.clientY;
-      const deltaX = moveEvent.clientX - startX;
-      const deltaY = moveEvent.clientY - startY;
-      const distance = Math.hypot(deltaX, deltaY);
-      const paletteScroll = verticalPalette
-        ? Math.abs(deltaY) > 12 && Math.abs(deltaY) > Math.abs(deltaX) * 1.2
-        : Math.abs(deltaX) > 12 && Math.abs(deltaX) > Math.abs(deltaY) * 1.2;
-      if (!filling && !scrolling && pointerType === 'touch' && paletteScroll) {
-        scrolling = true;
-        clearHold();
-        if (verticalPalette && paletteScroller) paletteScroller.scrollTop -= deltaY;
-      } else if (scrolling && verticalPalette && paletteScroller) {
-        paletteScroller.scrollTop -= moveEvent.clientY - previousY;
+      const deltaX = lastX - startX;
+      const deltaY = lastY - startY;
+      const along = verticalPalette ? Math.abs(deltaY) : Math.abs(deltaX);
+      const across = verticalPalette ? Math.abs(deltaX) : Math.abs(deltaY);
+      const towardCanvas = verticalPalette ? deltaX < -6 : deltaY < -6;
+
+      if (!filling && !scrolling) {
+        if (pointerType !== 'touch' && Math.hypot(deltaX, deltaY) > 6) activateFill();
+        else if (towardCanvas && across >= 8 && across >= along * .4) activateFill();
+        else if (pointerType === 'touch' && along > 10 && along > across) {
+          scrolling = true;
+          clearHold();
+        }
       }
       if (scrolling) {
-        if (verticalPalette) moveEvent.preventDefault();
+        moveEvent.preventDefault();
+        if (!paletteScroller) return;
+        if (verticalPalette) paletteScroller.scrollTop -= lastY - previousY;
+        else paletteScroller.scrollLeft -= lastX - previousX;
         return;
       }
-      const draggedTowardCanvas = verticalPalette
-        ? deltaX < -8 && Math.abs(deltaX) > Math.abs(deltaY) * .55
-        : deltaY < -8 && Math.abs(deltaY) > Math.abs(deltaX) * .55;
-      if (!filling && (pointerType !== 'touch' ? distance > 6 : draggedTowardCanvas)) activateFill();
       if (filling) {
         moveEvent.preventDefault();
-        const fingerLift = pointerType === 'touch' ? 48 : 0;
-        setDragColor({ color: swatchColor, x: moveEvent.clientX - (verticalPalette ? fingerLift : 0), y: moveEvent.clientY - (verticalPalette ? 0 : fingerLift) });
-        previewColorDrop(moveEvent.clientX, moveEvent.clientY, swatchColor);
+        const point = aim(lastX, lastY);
+        setDragColor({ color: swatchColor, x: point.x, y: point.y });
+        previewColorDrop(point.x, point.y, swatchColor);
       }
     };
     const up = (upEvent: PointerEvent) => {
@@ -104,7 +114,8 @@ export function useColorDropGesture({
       if (scrolling) return;
       if (!filling) { setColor(swatchColor); haptic(5); return; }
       const canvas = canvasRef.current;
-      const dropPoint = canvas ? pointFromClient(canvas, upEvent.clientX, upEvent.clientY, true) : null;
+      const point = aim(upEvent.clientX, upEvent.clientY);
+      const dropPoint = canvas ? pointFromClient(canvas, point.x, point.y, true) : null;
       if (dropPoint) fillAt(dropPoint, swatchColor);
       else notify('Drop the color inside the canvas');
     };
