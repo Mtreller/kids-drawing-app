@@ -12,6 +12,7 @@ import {
   type MouseResize, type MouseRotate, type MultiTouch, type ObjectGesture, type ViewGesture,
 } from './gestures';
 import { DrawingLibrary } from './components/DrawingLibrary';
+import { StartChooser } from './components/StartChooser';
 import { colors, Palette } from './components/Palette';
 import { ToolDock, TopBar, type PanelName } from './components/Toolbars';
 import { CanvasWorkspace } from './components/CanvasWorkspace';
@@ -34,7 +35,9 @@ const activeFullscreenElement = () => {
 };
 
 const BRUSH_MIN = 3;
-const BRUSH_MAX = 240;
+const BRUSH_MAX = 560;
+const BRUSH_DEFAULT = 56;
+const BRUSH_STEP = 8;
 
 export function App() {
   const visibleRef = useRef<HTMLCanvasElement>(null);
@@ -75,7 +78,7 @@ export function App() {
 
   const [tool, setTool] = useState<Tool>('brush');
   const [color, setColor] = useState(colors[9]);
-  const [brushSize, setBrushSize] = useState(24);
+  const [brushSize, setBrushSize] = useState(BRUSH_DEFAULT);
   const [opacity, setOpacity] = useState(1);
   const [flow, setFlow] = useState(.8);
   const [smoothing, setSmoothing] = useState(.35);
@@ -98,6 +101,9 @@ export function App() {
   const [historyState, setHistoryState] = useState({ undo: false, redo: false });
   const [focusMode, setFocusMode] = useState(false);
   const [drawingActive, setDrawingActive] = useState(false);
+  const [chooserOpen, setChooserOpen] = useState(true);
+  const [sessionStarted, setSessionStarted] = useState(false);
+  const [savedArtwork, setSavedArtwork] = useState<Snapshot | null>(null);
   const [leftHanded, setLeftHanded] = useState(() => {
     try { return window.localStorage.getItem('color-pop-left-handed') === 'true'; }
     catch { return false; }
@@ -317,9 +323,7 @@ export function App() {
       refreshHistoryState();
       const saved = await loadCurrentArtwork();
       if (cancelled || !saved?.bitmap) return;
-      history.current = [saved];
-      applySnapshot(saved);
-      setMessage('Your last drawing was restored');
+      setSavedArtwork(saved);
     })().catch(() => undefined);
     return () => { cancelled = true; };
   }, [applySnapshot, capturePageBase]);
@@ -1001,6 +1005,41 @@ export function App() {
     image.src = src;
   };
 
+  const beginSession = () => {
+    setChooserOpen(false);
+    setSessionStarted(true);
+    setPanel(null);
+    setDrawingActive(false);
+  };
+
+  const chooseBlankCanvas = () => {
+    if (sessionStarted) clearArt();
+    else notify('Blank canvas ready');
+    beginSession();
+  };
+
+  const chooseContinue = () => {
+    if (!sessionStarted && savedArtwork) {
+      history.current = [savedArtwork];
+      future.current = [];
+      applySnapshot(savedArtwork);
+      refreshHistoryState();
+      notify('Your last drawing was restored');
+    }
+    beginSession();
+  };
+
+  const openNewCanvasChooser = () => {
+    setPanel(null);
+    setChooserOpen(true);
+    setDrawingActive(false);
+  };
+
+  const selectLibraryPage = (src: string, title: string) => {
+    loadLibraryPage(src, title);
+    beginSession();
+  };
+
   const save = () => {
     const output = document.createElement('canvas');
     output.width = backingRef.current?.width ?? canvasSize.width;
@@ -1025,6 +1064,10 @@ export function App() {
         return;
       }
       if (isTyping) return;
+      if (chooserOpen) {
+        if (event.key === 'Escape') setPanel(null);
+        return;
+      }
       const modifier = event.metaKey || event.ctrlKey;
       const key = event.key.toLowerCase();
       if (modifier && key === 'z') {
@@ -1037,8 +1080,8 @@ export function App() {
       else if (key === 'e') chooseTool('eraser');
       else if (key === 'f') chooseTool('fill');
       else if (key === 'v') chooseTool('move');
-      else if (key === '[') setBrushSize((value) => Math.max(BRUSH_MIN, value - 3));
-      else if (key === ']') setBrushSize((value) => Math.min(BRUSH_MAX, value + 3));
+      else if (key === '[') setBrushSize((value) => Math.max(BRUSH_MIN, value - BRUSH_STEP));
+      else if (key === ']') setBrushSize((value) => Math.min(BRUSH_MAX, value + BRUSH_STEP));
       else if (key === '0') resetView();
       else if (key === 'r') resetPage();
       else if (key === 'm') toggleStayInLines();
@@ -1047,7 +1090,7 @@ export function App() {
       else if ((event.key === 'Delete' || event.key === 'Backspace') && selectedId) { event.preventDefault(); deleteSelected(); }
       else if (event.key === 'Escape') {
         setPanel(null);
-        if (focusMode) void toggleFocusMode();
+        if (!chooserOpen && focusMode) void toggleFocusMode();
       }
     };
     const keyUp = (event: KeyboardEvent) => { if (event.code === 'Space') spaceHeld.current = false; };
@@ -1079,7 +1122,7 @@ export function App() {
   const selectedObject = objects.find((object) => object.id === selectedId) ?? null;
 
   return (
-    <main className={`app-shell${focusMode ? ' is-focus' : ''}${drawingActive ? ' is-drawing' : ''}${leftHanded ? ' is-left-handed' : ''}${stayInLines ? ' is-line-safe' : ''}`}>
+    <main className={`app-shell${focusMode ? ' is-focus' : ''}${drawingActive ? ' is-drawing' : ''}${leftHanded ? ' is-left-handed' : ''}${stayInLines ? ' is-line-safe' : ''}${chooserOpen ? ' is-choosing' : ''}`}>
       <TopBar
         focusMode={focusMode}
         canUndo={historyState.undo}
@@ -1111,6 +1154,8 @@ export function App() {
         sizeControlRef={sizeControlRef}
         opacityControlRef={opacityControlRef}
         brushSize={brushSize}
+        brushMinimum={BRUSH_MIN}
+        brushMaximum={BRUSH_MAX}
         opacity={opacity}
         onBrushSize={setBrushSize}
         onOpacity={setOpacity}
@@ -1171,12 +1216,20 @@ export function App() {
         onUpload={() => fileRef.current?.click()}
         onSave={save}
         onResetPage={resetPage}
-        onClearArt={clearArt}
+        onClearArt={openNewCanvasChooser}
         onToggleFocus={() => void toggleFocusMode()}
         onToggleHanded={() => { setLeftHanded((value) => !value); haptic(8); }}
         onTolerance={setTolerance}
       />
-      {panel === 'library' && <DrawingLibrary onClose={() => setPanel(null)} onSelect={loadLibraryPage} />}
+      {chooserOpen && panel !== 'library' && <StartChooser
+        savedBitmap={savedArtwork?.bitmap ?? null}
+        showContinue={sessionStarted || Boolean(savedArtwork?.bitmap)}
+        sessionStarted={sessionStarted}
+        onColorDrawing={() => setPanel('library')}
+        onBlankCanvas={chooseBlankCanvas}
+        onContinue={chooseContinue}
+      />}
+      {panel === 'library' && <DrawingLibrary onClose={() => setPanel(null)} onSelect={selectLibraryPage} />}
 
       <Palette tool={tool} brushType={brushType} color={color} onBrush={selectBrush} onColorPointerDown={startColorDrag} onCustomColor={setColor} />
       <input ref={fileRef} className="visually-hidden" type="file" accept="image/png,image/jpeg,image/webp" onChange={(event) => { const file = event.target.files?.[0]; if (file) upload(file); event.target.value = ''; }} />
