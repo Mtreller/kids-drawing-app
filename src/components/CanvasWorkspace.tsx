@@ -9,7 +9,7 @@ export function CanvasWorkspace({
   message, stayInLines, selectedObject, canvasRotation, zoom,
   onRotateSelected, onDeleteSelected, onRotateCanvas, onResetCanvasRotation, onResetView,
   onWheel, onStagePointerDown, onStagePointerMove, onStagePointerUp, onStagePointerCancel,
-  clusterRef, sizeControlRef, opacityControlRef, brushSize, opacity, onBrushSize, onOpacity, onOpenBrush,
+  clusterRef, sizeControlRef, opacityControlRef, brushSize, brushMinimum, brushMaximum, opacity, onBrushSize, onOpacity, onOpenBrush,
   canvasSize, displaySize, pan, visibleRef, fillPreviewRef, fillPreviewActive, tool, brushCursor,
   onCanvasPointerDown, onCanvasPointerMove, onCanvasPointerUp, onCanvasPointerCancel,
   onCanvasPointerEnter, onCanvasPointerLeave,
@@ -33,6 +33,8 @@ export function CanvasWorkspace({
   sizeControlRef: RefObject<HTMLElement>;
   opacityControlRef: RefObject<HTMLElement>;
   brushSize: number;
+  brushMinimum: number;
+  brushMaximum: number;
   opacity: number;
   onBrushSize: (value: number) => void;
   onOpacity: (value: number) => void;
@@ -58,14 +60,14 @@ export function CanvasWorkspace({
       {stayInLines && <div className="line-mode-badge"><ToolIcon name="magic" size={16} /><span>Stay Inside Lines</span></div>}
       {selectedObject && <div className="selection-toolbar" aria-label="Selected object controls">
         <span>{Math.round(selectedObject.width)} × {Math.round(selectedObject.height)} • {Math.round(selectedObject.rotation * 180 / Math.PI)}°</span>
-        <button className="rotate-selection" type="button" onClick={onRotateSelected} aria-label="Rotate selected object 15 degrees">↻</button>
-        <button className="delete-selection" type="button" onClick={onDeleteSelected} aria-label="Delete selected object">×</button>
+        <button className="rotate-selection" type="button" onClick={onRotateSelected} aria-label="Rotate selected object 15 degrees"><ToolIcon name="rotateRight" size={16} /></button>
+        <button className="delete-selection" type="button" onClick={onDeleteSelected} aria-label="Delete selected object"><ToolIcon name="close" size={16} /></button>
       </div>}
       <div className="view-controls" aria-label="Canvas view controls">
-        <button type="button" onClick={() => onRotateCanvas(-1)} aria-label="Rotate canvas left 90 degrees">↶<span>90°</span></button>
+        <button type="button" onClick={() => onRotateCanvas(-1)} aria-label="Rotate canvas left 90 degrees"><ToolIcon name="rotateLeft" size={16} /><span>90°</span></button>
         <button className="rotation-reset" type="button" onClick={onResetCanvasRotation} aria-label="Reset canvas rotation">{Math.round(canvasRotation * 180 / Math.PI)}°</button>
-        <button type="button" onClick={() => onRotateCanvas(1)} aria-label="Rotate canvas right 90 degrees">↷<span>90°</span></button>
-        <button className="zoom-reset" type="button" onClick={onResetView} aria-label="Fit canvas to screen">Fit {Math.round(zoom * 100)}%</button>
+        <button type="button" onClick={() => onRotateCanvas(1)} aria-label="Rotate canvas right 90 degrees"><ToolIcon name="rotateRight" size={16} /><span>90°</span></button>
+        <button className="zoom-reset" type="button" onClick={onResetView} aria-label="Fit canvas to screen"><ToolIcon name="fit" size={15} />{Math.round(zoom * 100)}%</button>
       </div>
     </div>
     <div
@@ -79,7 +81,7 @@ export function CanvasWorkspace({
         <aside className="side-controls" ref={sizeControlRef} aria-label="Brush size">
           <span className="control-icon"><ToolIcon name="brush" size={17} /></span>
           <button className="control-value" type="button" aria-label="Open brush settings" onClick={onOpenBrush}>{brushSize}<small>px</small></button>
-          <VerticalRange label="Brush size" minimum={3} maximum={240} value={brushSize} onChange={onBrushSize} />
+          <VerticalRange label="Brush size" minimum={brushMinimum} maximum={brushMaximum} value={brushSize} onChange={onBrushSize} />
           <span className="control-label">Size</span>
         </aside>
         <div className="canvas-wrap" style={{

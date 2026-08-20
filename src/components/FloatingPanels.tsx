@@ -66,7 +66,7 @@ export function FloatingPanels({
 }) {
   return <>
     {panel === 'brush' && <section className="popover brush-popover" role="dialog" aria-label="Brush settings">
-      <header><div><strong>Brush studio</strong><small>Pick a favorite or paint with magic</small></div><button type="button" aria-label="Close brush settings" onClick={onClose}>×</button></header>
+      <header><div><strong>Brush studio</strong><small>Pick a favorite or paint with magic</small></div><button type="button" aria-label="Close brush settings" onClick={onClose}><ToolIcon name="close" size={18} /></button></header>
       <div className="brush-library" aria-label="Brush types">
         {(['Favorites', 'Paint & texture', 'Magic'] as const).map((group) => <section className="brush-group" key={group}>
           <h3>{group}</h3>
@@ -101,13 +101,13 @@ export function FloatingPanels({
     </div>}
     {panel === 'stickers' && <div className="popover sticker-popover">{stickers.map((item) => <button key={item} onClick={() => onAddSticker(item)}>{item}</button>)}</div>}
     {panel === 'actions' && <div className="popover actions-popover">
-      <button type="button" onClick={onUpload}>⬆️ <span>Upload picture</span></button>
-      <button type="button" onClick={onSave}>⬇️ <span>Save PNG</span></button>
+      <button type="button" onClick={onUpload}><ToolIcon name="upload" size={21} /> <span>Upload picture</span></button>
+      <button type="button" onClick={onSave}><ToolIcon name="download" size={21} /> <span>Save PNG</span></button>
       <button type="button" onClick={onToggleStayInLines}><ToolIcon name="magic" size={21} /> <span>{stayInLines ? 'Free drawing mode' : 'Stay inside lines'}</span></button>
       <button type="button" onClick={onResetPage}><ToolIcon name="reset" size={21} /> <span>Reset page</span></button>
-      <button type="button" onClick={onClearArt}>✨ <span>New canvas</span></button>
-      <button type="button" onClick={onToggleFocus}>⛶ <span>{focusMode ? 'Exit focus mode' : 'Focus mode'}</span></button>
-      <button type="button" onClick={onToggleHanded}>↔️ <span>{leftHanded ? 'Right-handed layout' : 'Left-handed layout'}</span></button>
+      <button type="button" onClick={onClearArt}><ToolIcon name="newCanvas" size={21} /> <span>New canvas</span></button>
+      <button type="button" onClick={onToggleFocus}><ToolIcon name="focus" size={21} /> <span>{focusMode ? 'Exit focus mode' : 'Focus mode'}</span></button>
+      <button type="button" onClick={onToggleHanded}><ToolIcon name="handedness" size={21} /> <span>{leftHanded ? 'Right-handed layout' : 'Left-handed layout'}</span></button>
       <label>Fill tolerance <b>{tolerance}</b><input type="range" min="5" max="80" value={tolerance} onChange={(event) => onTolerance(Number(event.target.value))} /></label>
       <div className="input-hints"><span>✨ Stay Inside Lines locks paint to one section</span><span>🎨 Hold a color to start ColorDrop</span><span>✌️ Pinch to zoom • twist to rotate</span><span>🖱 Ctrl-wheel zoom • Space-drag pan</span></div>
     </div>}

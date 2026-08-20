@@ -17,11 +17,11 @@ export function TopBar({ focusMode, canUndo, canRedo, onUndo, onRedo, onFocus, o
   return <header className="topbar">
     <div className="brand"><span className="brand__mark" aria-hidden="true">✦</span><span>Color Pop</span></div>
     <div className="topbar__actions">
-      <IconButton icon="↶" label="Undo" disabled={!canUndo} onClick={onUndo} />
-      <IconButton icon="↷" label="Redo" disabled={!canRedo} onClick={onRedo} />
-      <IconButton icon="⛶" label={focusMode ? 'Exit focus mode' : 'Enter focus mode'} active={focusMode} onClick={onFocus} />
-      <button className="library-button" type="button" onClick={onLibrary}><span aria-hidden="true">▦</span><b>Drawings</b></button>
-      <button className="gallery-button" type="button" onClick={onActions}><span aria-hidden="true">•••</span><b>Actions</b></button>
+      <IconButton icon={<ToolIcon name="undo" />} label="Undo" disabled={!canUndo} onClick={onUndo} />
+      <IconButton icon={<ToolIcon name="redo" />} label="Redo" disabled={!canRedo} onClick={onRedo} />
+      <IconButton icon={<ToolIcon name="focus" />} label={focusMode ? 'Exit focus mode' : 'Enter focus mode'} active={focusMode} onClick={onFocus} />
+      <button className="library-button" type="button" onClick={onLibrary}><ToolIcon name="library" size={20} /><b>Drawings</b></button>
+      <button className="gallery-button" type="button" onClick={onActions}><ToolIcon name="more" size={20} /><b>Actions</b></button>
     </div>
   </header>;
 }

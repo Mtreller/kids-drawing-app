@@ -1,3 +1,5 @@
+import { ToolIcon } from '../icons';
+
 type DrawingPage = { title: string; file: string; src: string };
 
 const pages = (folder: string, entries: Array<Omit<DrawingPage, 'src'>>) =>
@@ -49,7 +51,7 @@ export function DrawingLibrary({ onClose, onSelect }: {
     <section className="library-panel" role="dialog" aria-modal="true" aria-labelledby="library-title">
       <header>
         <div><span className="eyebrow">Drawing library</span><h2 id="library-title">Pick a page</h2></div>
-        <button type="button" aria-label="Close drawing library" onClick={onClose}>×</button>
+        <button type="button" aria-label="Close drawing library" onClick={onClose}><ToolIcon name="close" size={22} /></button>
       </header>
       <div className="category-heading"><span>🐾</span><div><h3>Paw Patrol</h3><p>Five adventures ready to color</p></div></div>
       <DrawingGrid entries={pawPatrolPages} onSelect={onSelect} />
