@@ -406,7 +406,7 @@ html:-webkit-full-screen .app-shell .workspace-hud {
   .canvas-wrap { border-radius: 3px; }
   .canvas-cluster { gap: 0; }
   .side-controls {
-    position: absolute;
+    position: fixed;
     z-index: 4;
     top: 50%;
     width: auto;
@@ -444,11 +444,20 @@ html:-webkit-full-screen .app-shell .workspace-hud {
     min-width: 32px;
     padding: 10px 0;
     border-radius: 0 16px 16px 0;
+    border-left: 0;
     background: rgb(255 255 255 / 86%);
   }
   .side-controls--right.is-collapsed,
-  .app-shell.is-left-handed .side-controls:not(.side-controls--right).is-collapsed { border-radius: 16px 0 0 16px; }
-  .app-shell.is-left-handed .side-controls--right.is-collapsed { border-radius: 0 16px 16px 0; }
+  .app-shell.is-left-handed .side-controls:not(.side-controls--right).is-collapsed {
+    border-radius: 16px 0 0 16px;
+    border-left: 1px solid rgb(255 255 255 / 78%);
+    border-right: 0;
+  }
+  .app-shell.is-left-handed .side-controls--right.is-collapsed {
+    border-radius: 0 16px 16px 0;
+    border-right: 1px solid rgb(255 255 255 / 78%);
+    border-left: 0;
+  }
   .side-controls.is-collapsed .side-controls__body { display: none; }
   .side-controls.is-open { padding: 8px 2px 9px; border-radius: 19px; }
   .side-controls.is-open .side-controls__body {
@@ -456,10 +465,18 @@ html:-webkit-full-screen .app-shell .workspace-hud {
     grid-template-rows: 32px auto auto auto;
     gap: 5px;
   }
-  .side-controls:not(.side-controls--right) { left: 4px; }
-  .side-controls--right { right: 4px; left: auto; }
-  .app-shell.is-left-handed .side-controls:not(.side-controls--right) { left: auto; right: 4px; }
-  .app-shell.is-left-handed .side-controls--right { right: auto; left: 4px; }
+  .side-controls:not(.side-controls--right),
+  .app-shell.is-focus .side-controls:not(.side-controls--right),
+  html:fullscreen .app-shell .side-controls:not(.side-controls--right),
+  html:-webkit-full-screen .app-shell .side-controls:not(.side-controls--right) { left: 0; right: auto; }
+  .side-controls--right,
+  .app-shell.is-focus .side-controls--right,
+  html:fullscreen .app-shell .side-controls--right,
+  html:-webkit-full-screen .app-shell .side-controls--right { right: 0; left: auto; }
+  .app-shell.is-left-handed .side-controls:not(.side-controls--right),
+  .app-shell.is-focus.is-left-handed .side-controls:not(.side-controls--right) { left: auto; right: 0; }
+  .app-shell.is-left-handed .side-controls--right,
+  .app-shell.is-focus.is-left-handed .side-controls--right { right: auto; left: 0; }
   .side-controls .vertical-range-wrap { height: clamp(92px, 19vh, 142px); }
   .side-controls input[type="range"] { width: clamp(92px, 19vh, 142px); }
   .side-controls .control-icon { width: 32px; height: 32px; }
@@ -597,8 +614,10 @@ html:-webkit-full-screen .app-shell .workspace-hud {
     top: calc(50% + 21px);
     transform: translateY(-50%);
   }
-  .canvas-cluster > .side-controls:not(.side-controls--right) { left: max(4px, env(safe-area-inset-left)); right: auto; }
-  .side-controls--right { left: max(40px, calc(env(safe-area-inset-left) + 36px)); right: auto; display: flex; }
+  .canvas-cluster > .side-controls:not(.side-controls--right),
+  .app-shell.is-focus .side-controls:not(.side-controls--right) { left: 0; right: auto; }
+  .side-controls--right,
+  .app-shell.is-focus .side-controls--right { left: 36px; right: auto; display: flex; }
   .palette, .app-shell.is-focus .palette {
     position: fixed;
     z-index: 7;
