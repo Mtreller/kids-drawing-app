@@ -1,4 +1,7 @@
+import { useState } from 'react';
 import { ToolIcon } from '../icons';
+import type { DrawingSummary } from '../storage';
+import { SavedDrawingGrid } from './StartChooser';
 
 type DrawingPage = { title: string; file: string; src: string };
 
@@ -43,22 +46,47 @@ function DrawingGrid({ entries, className = '', onSelect }: {
   </div>;
 }
 
-export function DrawingLibrary({ onClose, onSelect }: {
+export function DrawingLibrary({
+  initialTab = 'pages',
+  savedDrawings,
+  artistName,
+  onClose,
+  onSelect,
+  onSelectSaved,
+  onDeleteSaved,
+}: {
+  initialTab?: 'pages' | 'saved';
+  savedDrawings: DrawingSummary[];
+  artistName: string;
   onClose: () => void;
   onSelect: (src: string, title: string) => void;
+  onSelectSaved: (id: string) => void;
+  onDeleteSaved: (id: string) => void;
 }) {
+  const [tab, setTab] = useState<'pages' | 'saved'>(initialTab);
   return <div className="library-backdrop" role="presentation" onPointerDown={(event) => { if (event.target === event.currentTarget) onClose(); }}>
     <section className="library-panel" role="dialog" aria-modal="true" aria-labelledby="library-title">
       <header>
-        <div><span className="eyebrow">Drawing library</span><h2 id="library-title">Pick a page</h2></div>
+        <div><span className="eyebrow">Drawing library</span><h2 id="library-title">{tab === 'saved' ? `${artistName}’s drawings` : 'Pick a page'}</h2></div>
         <button type="button" aria-label="Close drawing library" onClick={onClose}><ToolIcon name="close" size={22} /></button>
       </header>
-      <div className="category-heading"><span>🐾</span><div><h3>Paw Patrol</h3><p>Five adventures ready to color</p></div></div>
-      <DrawingGrid entries={pawPatrolPages} onSelect={onSelect} />
-      <div className="category-heading category-heading--magic"><span>🦄</span><div><h3>Unicorns &amp; Princesses</h3><p>Magical friends and underwater adventures</p></div></div>
-      <DrawingGrid entries={unicornPrincessPages} className="drawing-grid--landscape" onSelect={onSelect} />
-      <div className="category-heading category-heading--stitch"><span>🌺</span><div><h3>Stitch</h3><p>Eight playful adventures ready to color</p></div></div>
-      <DrawingGrid entries={stitchPages} className="drawing-grid--portrait" onSelect={onSelect} />
+      <div className="library-tabs" role="tablist" aria-label="Library sections">
+        <button type="button" role="tab" aria-selected={tab === 'pages'} className={tab === 'pages' ? 'is-active' : ''} onClick={() => setTab('pages')}>Coloring pages</button>
+        <button type="button" role="tab" aria-selected={tab === 'saved'} className={tab === 'saved' ? 'is-active' : ''} onClick={() => setTab('saved')}>My drawings{savedDrawings.length ? ` (${savedDrawings.length})` : ''}</button>
+      </div>
+      {tab === 'saved' ? <SavedDrawingGrid
+        drawings={savedDrawings}
+        emptyLabel="Nothing saved yet. Color a page, then it will show up here."
+        onSelect={onSelectSaved}
+        onDelete={onDeleteSaved}
+      /> : <>
+        <div className="category-heading"><span>🐾</span><div><h3>Paw Patrol</h3><p>Five adventures ready to color</p></div></div>
+        <DrawingGrid entries={pawPatrolPages} onSelect={onSelect} />
+        <div className="category-heading category-heading--magic"><span>🦄</span><div><h3>Unicorns &amp; Princesses</h3><p>Magical friends and underwater adventures</p></div></div>
+        <DrawingGrid entries={unicornPrincessPages} className="drawing-grid--landscape" onSelect={onSelect} />
+        <div className="category-heading category-heading--stitch"><span>🌺</span><div><h3>Stitch</h3><p>Eight playful adventures ready to color</p></div></div>
+        <DrawingGrid entries={stitchPages} className="drawing-grid--portrait" onSelect={onSelect} />
+      </>}
     </section>
   </div>;
 }
