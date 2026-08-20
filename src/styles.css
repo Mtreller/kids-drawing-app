@@ -102,11 +102,9 @@ body.ios-focus-fallback .app-shell { position: sticky; top: 0; }
   position: static;
   z-index: 3;
   flex: 0 0 64px;
-  display: grid;
-  grid-template-rows: 34px auto auto auto;
-  justify-items: center;
-  align-items: center;
-  gap: 7px;
+  display: flex;
+  flex-direction: row;
+  align-items: stretch;
   width: 64px;
   padding: 10px 7px 12px;
   border: 1px solid rgb(255 255 255 / 78%);
@@ -115,6 +113,15 @@ body.ios-focus-fallback .app-shell { position: sticky; top: 0; }
   box-shadow: 0 12px 32px rgb(53 39 78 / 14%);
   backdrop-filter: blur(18px);
   transform: none;
+}
+.side-controls__toggle { display: none; }
+.side-controls__body {
+  display: grid;
+  grid-template-rows: 34px auto auto auto;
+  justify-items: center;
+  align-items: center;
+  gap: 7px;
+  width: 100%;
 }
 .vertical-range-wrap { position: relative; width: 32px; height: clamp(110px, 22vh, 180px); }
 .side-controls input[type="range"] {
@@ -398,13 +405,52 @@ html:-webkit-full-screen .app-shell .workspace-hud {
     position: absolute;
     z-index: 4;
     top: 50%;
+    width: auto;
+    flex-basis: auto;
+    gap: 0;
+    padding: 0;
+    overflow: hidden;
+    transform: translateY(-50%);
+  }
+  .side-controls__toggle {
+    display: grid;
+    flex: 0 0 32px;
+    width: 32px;
+    min-height: 56px;
+    place-items: center;
+    align-self: center;
+    padding: 0;
+    color: #5f4ab5;
+    background: transparent;
+    cursor: pointer;
+  }
+  .side-controls__toggle svg { width: 16px; height: 16px; transition: transform .16s ease; }
+  .side-controls.is-open .side-controls__toggle svg { transform: rotate(180deg); }
+  .side-controls--right .side-controls__toggle svg,
+  .app-shell.is-left-handed .side-controls:not(.side-controls--right) .side-controls__toggle svg { transform: rotate(180deg); }
+  .side-controls--right.is-open .side-controls__toggle svg,
+  .app-shell.is-left-handed .side-controls:not(.side-controls--right).is-open .side-controls__toggle svg { transform: none; }
+  .app-shell.is-left-handed .side-controls--right .side-controls__toggle svg { transform: none; }
+  .app-shell.is-left-handed .side-controls--right.is-open .side-controls__toggle svg { transform: rotate(180deg); }
+  .side-controls--right,
+  .app-shell.is-left-handed .side-controls:not(.side-controls--right) { flex-direction: row-reverse; }
+  .app-shell.is-left-handed .side-controls--right { flex-direction: row; }
+  .side-controls.is-collapsed {
+    width: 32px;
+    min-width: 32px;
+    padding: 10px 0;
+    border-radius: 0 16px 16px 0;
+    background: rgb(255 255 255 / 86%);
+  }
+  .side-controls--right.is-collapsed,
+  .app-shell.is-left-handed .side-controls:not(.side-controls--right).is-collapsed { border-radius: 16px 0 0 16px; }
+  .app-shell.is-left-handed .side-controls--right.is-collapsed { border-radius: 0 16px 16px 0; }
+  .side-controls.is-collapsed .side-controls__body { display: none; }
+  .side-controls.is-open { padding: 8px 2px 9px; border-radius: 19px; }
+  .side-controls.is-open .side-controls__body {
     width: 52px;
-    flex-basis: 52px;
     grid-template-rows: 32px auto auto auto;
     gap: 5px;
-    padding: 8px 2px 9px;
-    border-radius: 19px;
-    transform: translateY(-50%);
   }
   .side-controls:not(.side-controls--right) { left: 4px; }
   .side-controls--right { right: 4px; left: auto; }
@@ -484,14 +530,13 @@ html:-webkit-full-screen .app-shell .workspace-hud {
     position: fixed;
     z-index: 6;
     top: calc(50% + 21px);
-    left: max(52px, calc(env(safe-area-inset-left) + 48px));
-    width: 48px;
+    left: max(4px, env(safe-area-inset-left));
+    width: auto;
     height: auto;
-    flex-basis: 48px;
-    grid-template-rows: 28px auto auto auto;
-    gap: 3px;
-    padding: 5px 1px 6px;
-    border-radius: 17px;
+    flex-basis: auto;
+    gap: 0;
+    padding: 0;
+    overflow: hidden;
     transform: translateY(-50%);
   }
   .side-controls .control-icon { width: 28px; height: 28px; }
@@ -499,14 +544,16 @@ html:-webkit-full-screen .app-shell .workspace-hud {
   .side-controls .vertical-range-wrap { height: clamp(68px, 22vh, 92px); }
   .side-controls input[type="range"] { width: clamp(68px, 22vh, 92px); }
   .side-controls .control-label { font-size: 7px; }
+  .side-controls.is-open { padding: 5px 1px 6px; border-radius: 17px; }
+  .side-controls.is-open .side-controls__body { width: 48px; grid-template-rows: 28px auto auto auto; gap: 3px; }
   .canvas-cluster, .app-shell.is-left-handed .canvas-cluster { flex-direction: row; gap: 0; }
   .app-shell.is-focus .side-controls, .app-shell.is-focus .side-controls--right {
     position: fixed;
     top: calc(50% + 21px);
     transform: translateY(-50%);
   }
-  .canvas-cluster > .side-controls:not(.side-controls--right) { left: max(52px, calc(env(safe-area-inset-left) + 48px)); }
-  .side-controls--right { left: max(4px, env(safe-area-inset-left)); right: auto; display: grid; }
+  .canvas-cluster > .side-controls:not(.side-controls--right) { left: max(4px, env(safe-area-inset-left)); right: auto; }
+  .side-controls--right { left: auto; right: max(52px, calc(env(safe-area-inset-right) + 46px)); display: flex; }
   .palette, .app-shell.is-focus .palette {
     position: fixed;
     z-index: 7;

@@ -1160,6 +1160,7 @@ export function App() {
         onBrushSize={setBrushSize}
         onOpacity={setOpacity}
         onOpenBrush={() => setPanel(panel === 'brush' ? null : 'brush')}
+        drawingActive={drawingActive}
         canvasSize={canvasSize}
         displaySize={displaySize}
         pan={pan}
