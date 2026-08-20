@@ -1110,6 +1110,7 @@ export function App() {
     clearFillPreview,
     fillAt,
     setColor,
+    onSelectBrush: selectBrush,
     activateFillTool: () => setTool('fill'),
     closePanels: () => setPanel(null),
     stopDrawing: () => setDrawingActive(false),
@@ -1233,7 +1234,7 @@ export function App() {
       />}
       {panel === 'library' && <DrawingLibrary onClose={() => setPanel(null)} onSelect={selectLibraryPage} />}
 
-      <Palette tool={tool} brushType={brushType} color={color} onBrush={selectBrush} onColorPointerDown={startColorDrag} onCustomColor={setColor} />
+      <Palette tool={tool} brushType={brushType} color={color} onBrush={selectBrush} onPalettePointerDown={startColorDrag} onCustomColor={setColor} />
       <input ref={fileRef} className="visually-hidden" type="file" accept="image/png,image/jpeg,image/webp" onChange={(event) => { const file = event.target.files?.[0]; if (file) upload(file); event.target.value = ''; }} />
       {dragColor && <div className={`color-drop-orb${fillPreviewActive ? ' is-over-target' : ''}`} style={{ left: dragColor.x, top: dragColor.y, backgroundColor: dragColor.color }} />}
     </main>
