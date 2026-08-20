@@ -25,6 +25,8 @@ jobs:
       - name: Install dependencies
         run: npm ci
       - name: Build app
+        env:
+          VITE_CLOUD_API: ${{ vars.VITE_CLOUD_API || 'https://color-pop-api.mtreller.workers.dev' }}
         run: npm run build
       - uses: actions/configure-pages@v5
       - uses: actions/upload-pages-artifact@v3

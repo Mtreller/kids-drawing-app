@@ -3,10 +3,13 @@ import {
   ART_HEIGHT, ART_WIDTH, ArtObject, Point, Snapshot, Tool,
   drawObject, fillRegion, hitObject, hitResizeHandle, hitRotateHandle, newObject,
 } from './drawing';
+import { getCloudStatus, subscribeCloudStatus, type CloudStatus } from './cloud';
+import { getHouseShareUrl } from './house';
 import {
-  deleteDrawing, deleteProfile, getDrawing, listDrawingSummaries, listProfiles,
-  makeId, makeThumbnail, migrateLegacyArtwork, saveDrawing, saveProfile, setActiveProfileId,
-  type DrawingSummary, type Profile, type SavedDrawing,
+  adoptHouseCode, currentHouseCode, deleteDrawing, deleteProfile, flushCloudSaves, getDrawing,
+  getStorageKind, listDrawingSummaries, listProfiles, makeId, makeThumbnail, migrateLegacyArtwork,
+  saveDrawing, saveProfile, setActiveProfileId, syncFromCloud, type DrawingSummary, type Profile,
+  type SavedDrawing, type StorageKind,
 } from './storage';
 import { brushPresets, drawBrushStroke, type BrushType } from './brushes';
 import { copyCanvas, createRegionMaskCache, getRegionMask, restoreBaseLine, type RegionMaskCache } from './regionMask';
@@ -125,6 +128,10 @@ export function App() {
   const [activeProfile, setActiveProfile] = useState<Profile | null>(null);
   const [drawings, setDrawings] = useState<DrawingSummary[]>([]);
   const [profileGateOpen, setProfileGateOpen] = useState(true);
+  const [bootReady, setBootReady] = useState(false);
+  const [houseCode, setHouseCode] = useState('');
+  const [cloudStatus, setCloudStatus] = useState<CloudStatus>(() => getCloudStatus());
+  const [storageKind, setStorageKind] = useState<StorageKind>('device');
   const [libraryTab, setLibraryTab] = useState<'pages' | 'saved'>('pages');
   const [leftHanded, setLeftHanded] = useState(() => {
     try { return window.localStorage.getItem('color-pop-left-handed') === 'true'; }
@@ -441,17 +448,35 @@ export function App() {
       }];
       refreshHistoryState();
       await migrateLegacyArtwork();
+      await syncFromCloud();
       const loadedProfiles = await listProfiles();
       if (cancelled) return;
+      setHouseCode(currentHouseCode());
+      setCloudStatus(getCloudStatus());
+      setStorageKind(getStorageKind());
       setProfiles(loadedProfiles);
+      setBootReady(true);
       setProfileGateOpen(true);
       setChooserOpen(false);
-    })().catch(() => undefined);
+    })().catch(() => {
+      if (cancelled) return;
+      setHouseCode(currentHouseCode());
+      setCloudStatus(getCloudStatus());
+      setStorageKind(getStorageKind());
+      setBootReady(true);
+    });
     return () => { cancelled = true; };
   }, [applySnapshot, capturePageBase]);
 
+  useEffect(() => subscribeCloudStatus(setCloudStatus), []);
+
   useEffect(() => {
-    const flush = () => { void flushAutosave().catch(() => undefined); };
+    const flush = () => {
+      void flushAutosave()
+        .catch(() => undefined)
+        .then(() => flushCloudSaves())
+        .catch(() => undefined);
+    };
     const onHide = () => { if (document.visibilityState === 'hidden') flush(); };
     document.addEventListener('visibilitychange', onHide);
     window.addEventListener('pagehide', flush);
@@ -1218,6 +1243,23 @@ export function App() {
     setProfileGateOpen(true);
   };
 
+  const joinHouse = async (code: string) => {
+    await adoptHouseCode(code);
+    const loadedProfiles = await listProfiles();
+    profileRef.current = null;
+    drawingIdRef.current = null;
+    setHouseCode(currentHouseCode());
+    setCloudStatus(getCloudStatus());
+    setStorageKind(getStorageKind());
+    setProfiles(loadedProfiles);
+    setActiveProfile(null);
+    setDrawings([]);
+    setSavedArtwork(null);
+    setSessionStarted(false);
+    setChooserOpen(false);
+    setProfileGateOpen(true);
+  };
+
   const chooseBlankCanvas = () => {
     void (async () => {
       await startNewDrawing('Blank drawing');
@@ -1504,12 +1546,29 @@ export function App() {
         onToggleHanded={() => { setLeftHanded((value) => !value); haptic(8); }}
         onTolerance={setTolerance}
       />
-      {profileGateOpen && <ProfilePicker
+      {profileGateOpen && !bootReady && <div className="start-chooser profile-gate" role="status" aria-live="polite">
+        <div className="start-chooser__panel">
+          <header className="start-chooser__header">
+            <span className="brand__mark" aria-hidden="true">✦</span>
+            <div>
+              <span className="eyebrow">Color Pop</span>
+              <h1>Finding your artists…</h1>
+            </div>
+          </header>
+          <p className="profile-house__status">Checking this device and the family cloud.</p>
+        </div>
+      </div>}
+      {profileGateOpen && bootReady && <ProfilePicker
         profiles={profiles}
         activeProfileId={activeProfile?.id ?? null}
+        houseCode={houseCode}
+        houseShareUrl={getHouseShareUrl(houseCode)}
+        cloudStatus={cloudStatus}
+        storageKind={storageKind}
         onSelect={(profile) => void chooseProfile(profile)}
         onCreate={(input) => void createProfile(input)}
         onDelete={(profile) => void removeProfile(profile)}
+        onJoinHouse={(code) => joinHouse(code)}
       />}
       {chooserOpen && !profileGateOpen && panel !== 'library' && <StartChooser
         profile={activeProfile}

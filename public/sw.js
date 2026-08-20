@@ -1,4 +1,4 @@
-const CACHE = 'color-pop-v2-2026-08-03';
+const CACHE = 'color-pop-v2-2026-08-20';
 const BASE = '/kids-drawing-app/';
 const CORE = [
   BASE,

@@ -1,5 +1,7 @@
 node_modules/
 dist/
 tmp/
+.data/
+cloudflare/wrangler.generated.toml
 .DS_Store
 *.local

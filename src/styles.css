@@ -420,6 +420,39 @@ html:-webkit-full-screen .app-shell .workspace-hud {
 .profile-primary { color: white; background: linear-gradient(145deg, #755cff, #9e65f2); }
 .profile-primary:disabled { opacity: .4; cursor: default; }
 .profile-secondary { color: #51495e; background: #eee9f5; }
+.profile-house {
+  margin-top: 22px;
+  padding: 16px;
+  border: 1px solid #e4ddec;
+  border-radius: 22px;
+  background: white;
+  display: grid;
+  gap: 10px;
+}
+.profile-house__row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+}
+.profile-house__label { margin: 0; color: #81798c; font-size: 11px; font-weight: 800; letter-spacing: .06em; text-transform: uppercase; }
+.profile-house__code { margin: 4px 0 0; font-size: 22px; font-weight: 850; letter-spacing: .08em; }
+.profile-house__pill {
+  flex: none;
+  padding: 6px 10px;
+  border-radius: 999px;
+  font-size: 11px;
+  font-weight: 800;
+  background: #eee9f5;
+  color: #51495e;
+}
+.profile-house__pill.is-online { color: #1f6b46; background: #d9f5e5; }
+.profile-house__pill.is-offline { color: #8a4b16; background: #ffe7c7; }
+.profile-house__status { margin: 0; color: #665e74; font-size: 13px; font-weight: 700; line-height: 1.45; }
+.profile-house__actions { display: flex; flex-wrap: wrap; gap: 8px; }
+.profile-house__actions .profile-secondary { min-height: 40px; padding: 0 12px; font-size: 13px; }
+.profile-house__join { display: grid; gap: 10px; }
+.profile-house__error { margin: 0; color: #b42318; font-size: 13px; font-weight: 800; }
 .library-tabs { display: flex; gap: 8px; margin: 16px 0 18px; }
 .library-tabs button {
   min-height: 40px;

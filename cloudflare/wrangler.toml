@@ -1,0 +1,10 @@
+name = "color-pop-api"
+main = "worker.js"
+compatibility_date = "2025-04-01"
+workers_dev = true
+
+# Local `wrangler dev` uses a simulated KV. Production deploys replace this id
+# in scripts/deploy-api.mjs after creating the color-pop-houses namespace.
+[[kv_namespaces]]
+binding = "HOUSES"
+id = "local-dev-houses"
