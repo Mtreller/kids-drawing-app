@@ -4,15 +4,22 @@ import { IconButton } from './Controls';
 
 export type PanelName = 'shapes' | 'stickers' | 'brush' | 'actions' | 'library' | null;
 
-export function TopBar({ focusMode, canUndo, canRedo, onUndo, onRedo, onFocus, onLibrary, onActions }: {
+export function TopBar({
+  focusMode, canUndo, canRedo, profileName, profileEmoji, profileColor,
+  onUndo, onRedo, onFocus, onLibrary, onActions, onProfile,
+}: {
   focusMode: boolean;
   canUndo: boolean;
   canRedo: boolean;
+  profileName: string;
+  profileEmoji: string;
+  profileColor: string;
   onUndo: () => void;
   onRedo: () => void;
   onFocus: () => void;
   onLibrary: () => void;
   onActions: () => void;
+  onProfile: () => void;
 }) {
   return <header className="topbar">
     <div className="brand"><span className="brand__mark" aria-hidden="true">✦</span><span>Color Pop</span></div>
@@ -21,6 +28,10 @@ export function TopBar({ focusMode, canUndo, canRedo, onUndo, onRedo, onFocus, o
       <IconButton icon={<ToolIcon name="redo" />} label="Redo" disabled={!canRedo} onClick={onRedo} />
       <IconButton icon={<ToolIcon name="focus" />} label={focusMode ? 'Exit focus mode' : 'Enter focus mode'} active={focusMode} onClick={onFocus} />
       <button className="library-button" type="button" onClick={onLibrary}><ToolIcon name="library" size={20} /><b>Drawings</b></button>
+      <button className="profile-button" type="button" onClick={onProfile} aria-label={`Switch artist, currently ${profileName}`}>
+        <span className="profile-avatar profile-avatar--bar" style={{ background: profileColor }}>{profileEmoji}</span>
+        <b>{profileName}</b>
+      </button>
       <button className="gallery-button" type="button" onClick={onActions}><ToolIcon name="more" size={20} /><b>Actions</b></button>
     </div>
   </header>;

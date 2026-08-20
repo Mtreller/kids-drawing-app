@@ -3,16 +3,21 @@ import {
   ART_HEIGHT, ART_WIDTH, ArtObject, Point, Snapshot, Tool,
   drawObject, fillRegion, hitObject, hitResizeHandle, hitRotateHandle, newObject,
 } from './drawing';
-import { loadCurrentArtwork, saveCurrentArtwork } from './storage';
+import {
+  deleteDrawing, deleteProfile, getDrawing, listDrawingSummaries, listProfiles,
+  makeId, makeThumbnail, migrateLegacyArtwork, saveDrawing, saveProfile, setActiveProfileId,
+  type DrawingSummary, type Profile, type SavedDrawing,
+} from './storage';
 import { brushPresets, drawBrushStroke, type BrushType } from './brushes';
 import { copyCanvas, createRegionMaskCache, getRegionMask, restoreBaseLine, type RegionMaskCache } from './regionMask';
-import { bitmapSource, canvasToPngBlob, trimHistory } from './history';
+import { bitmapSource, canvasToJpegBlob, canvasToPngBlob, scaledCanvas, trimHistory } from './history';
 import {
   canvasPointFromClient, constrainPan, normalizeRotation,
   type MouseResize, type MouseRotate, type MultiTouch, type ObjectGesture, type ViewGesture,
 } from './gestures';
 import { DrawingLibrary } from './components/DrawingLibrary';
 import { StartChooser } from './components/StartChooser';
+import { ProfilePicker } from './components/ProfilePicker';
 import { colors, Palette } from './components/Palette';
 import { ToolDock, TopBar, type PanelName } from './components/Toolbars';
 import { CanvasWorkspace } from './components/CanvasWorkspace';
@@ -75,6 +80,10 @@ export function App() {
   const scratchCanvasRef = useRef<HTMLCanvasElement | null>(null);
   const fillPreviewCanvasRef = useRef<HTMLCanvasElement>(null);
   const fillPreviewTargetRef = useRef<HTMLCanvasElement | string | null>(null);
+  const profileRef = useRef<Profile | null>(null);
+  const drawingIdRef = useRef<string | null>(null);
+  const drawingTitleRef = useRef('Drawing');
+  const drawingCreatedAtRef = useRef(Date.now());
 
   const [tool, setTool] = useState<Tool>('brush');
   const [color, setColor] = useState(colors[9]);
@@ -101,15 +110,21 @@ export function App() {
   const [historyState, setHistoryState] = useState({ undo: false, redo: false });
   const [focusMode, setFocusMode] = useState(false);
   const [drawingActive, setDrawingActive] = useState(false);
-  const [chooserOpen, setChooserOpen] = useState(true);
+  const [chooserOpen, setChooserOpen] = useState(false);
   const [sessionStarted, setSessionStarted] = useState(false);
   const [savedArtwork, setSavedArtwork] = useState<Snapshot | null>(null);
+  const [profiles, setProfiles] = useState<Profile[]>([]);
+  const [activeProfile, setActiveProfile] = useState<Profile | null>(null);
+  const [drawings, setDrawings] = useState<DrawingSummary[]>([]);
+  const [profileGateOpen, setProfileGateOpen] = useState(true);
+  const [libraryTab, setLibraryTab] = useState<'pages' | 'saved'>('pages');
   const [leftHanded, setLeftHanded] = useState(() => {
     try { return window.localStorage.getItem('color-pop-left-handed') === 'true'; }
     catch { return false; }
   });
 
   useEffect(() => { objectsRef.current = objects; }, [objects]);
+  useEffect(() => { profileRef.current = activeProfile; }, [activeProfile]);
   useEffect(() => {
     try { window.localStorage.setItem('color-pop-left-handed', String(leftHanded)); }
     catch { /* Settings still work for this session when storage is unavailable. */ }
@@ -253,6 +268,49 @@ export function App() {
     };
   }, []);
 
+  const compositeArt = useCallback(() => {
+    const backing = backingRef.current;
+    if (!backing) return null;
+    const output = document.createElement('canvas');
+    output.width = backing.width;
+    output.height = backing.height;
+    const context = output.getContext('2d');
+    if (!context) return null;
+    context.drawImage(backing, 0, 0);
+    objectsRef.current.forEach((object) => drawObject(context, object));
+    return output;
+  }, []);
+
+  const persistDrawing = useCallback(async (current: Snapshot) => {
+    const profile = profileRef.current;
+    const drawingId = drawingIdRef.current;
+    if (!profile || !drawingId) return;
+    const art = compositeArt();
+    const thumbnail = art
+      ? await canvasToJpegBlob(scaledCanvas(art, 360))
+      : await makeThumbnail(current);
+    const record: SavedDrawing = {
+      id: drawingId,
+      profileId: profile.id,
+      title: drawingTitleRef.current,
+      snapshot: current,
+      thumbnail,
+      createdAt: drawingCreatedAtRef.current,
+      updatedAt: Date.now(),
+    };
+    await saveDrawing(record);
+    const summary: DrawingSummary = {
+      id: record.id,
+      profileId: record.profileId,
+      title: record.title,
+      thumbnail: record.thumbnail,
+      createdAt: record.createdAt,
+      updatedAt: record.updatedAt,
+    };
+    setDrawings((list) => [summary, ...list.filter((drawing) => drawing.id !== record.id)]);
+    setSavedArtwork(current);
+  }, [compositeArt]);
+
   const pushHistory = useCallback(() => {
     const pendingSnapshot = snapshot();
     historyWorkRef.current = historyWorkRef.current.then(async () => {
@@ -261,10 +319,10 @@ export function App() {
       trimHistory(history.current);
       future.current = [];
       refreshHistoryState();
-      await saveCurrentArtwork(current);
+      await persistDrawing(current);
     }).catch(() => undefined);
     return historyWorkRef.current;
-  }, [snapshot]);
+  }, [persistDrawing, snapshot]);
 
   const applySnapshot = useCallback((next: Snapshot) => {
     const backing = backingRef.current;
@@ -321,12 +379,29 @@ export function App() {
         baseHeight: ART_HEIGHT,
       }];
       refreshHistoryState();
-      const saved = await loadCurrentArtwork();
-      if (cancelled || !saved?.bitmap) return;
-      setSavedArtwork(saved);
+      await migrateLegacyArtwork();
+      const loadedProfiles = await listProfiles();
+      if (cancelled) return;
+      setProfiles(loadedProfiles);
+      setProfileGateOpen(true);
+      setChooserOpen(false);
     })().catch(() => undefined);
     return () => { cancelled = true; };
   }, [applySnapshot, capturePageBase]);
+
+  useEffect(() => {
+    const flush = () => {
+      if (!profileRef.current || !drawingIdRef.current) return;
+      void snapshot().then((current) => persistDrawing(current)).catch(() => undefined);
+    };
+    const onHide = () => { if (document.visibilityState === 'hidden') flush(); };
+    document.addEventListener('visibilitychange', onHide);
+    window.addEventListener('pagehide', flush);
+    return () => {
+      document.removeEventListener('visibilitychange', onHide);
+      window.removeEventListener('pagehide', flush);
+    };
+  }, [persistDrawing, snapshot]);
 
   const updateObjects = (updater: (items: ArtObject[]) => ArtObject[]) => {
     const next = updater(objectsRef.current);
@@ -864,7 +939,7 @@ export function App() {
     future.current.push(history.current.pop()!);
     const previous = history.current.at(-1)!;
     applySnapshot(previous);
-    void saveCurrentArtwork(previous).catch(() => undefined);
+    void persistDrawing(previous).catch(() => undefined);
     refreshHistoryState();
     haptic(8);
   };
@@ -874,7 +949,7 @@ export function App() {
     if (!next) return;
     history.current.push(next);
     applySnapshot(next);
-    void saveCurrentArtwork(next).catch(() => undefined);
+    void persistDrawing(next).catch(() => undefined);
     refreshHistoryState();
     haptic([7, 25, 7]);
   };
@@ -1008,12 +1083,84 @@ export function App() {
 
   const beginSession = () => {
     setChooserOpen(false);
+    setProfileGateOpen(false);
     setSessionStarted(true);
     setPanel(null);
     setDrawingActive(false);
   };
 
+  const startNewDrawing = (title: string) => {
+    drawingIdRef.current = makeId();
+    drawingTitleRef.current = title;
+    drawingCreatedAtRef.current = Date.now();
+  };
+
+  const refreshProfileDrawings = async (profileId: string) => {
+    const summaries = await listDrawingSummaries(profileId);
+    setDrawings(summaries);
+    return summaries;
+  };
+
+  const chooseProfile = async (profile: Profile) => {
+    if (activeProfile?.id === profile.id && sessionStarted && !chooserOpen) {
+      setProfileGateOpen(false);
+      return;
+    }
+    await historyWorkRef.current;
+    await setActiveProfileId(profile.id);
+    profileRef.current = profile;
+    setActiveProfile(profile);
+    const summaries = await refreshProfileDrawings(profile.id);
+    const newest = summaries[0];
+    if (newest) {
+      const full = await getDrawing(newest.id);
+      drawingIdRef.current = newest.id;
+      drawingTitleRef.current = newest.title;
+      drawingCreatedAtRef.current = newest.createdAt;
+      setSavedArtwork(full?.snapshot ?? null);
+    } else {
+      drawingIdRef.current = null;
+      drawingTitleRef.current = 'Drawing';
+      setSavedArtwork(null);
+    }
+    setSessionStarted(false);
+    setProfileGateOpen(false);
+    setChooserOpen(true);
+    setPanel(null);
+    setDrawingActive(false);
+  };
+
+  const createProfile = async (input: { name: string; color: string; emoji: string }) => {
+    const now = Date.now();
+    const profile: Profile = {
+      id: makeId(),
+      name: input.name,
+      color: input.color,
+      emoji: input.emoji,
+      createdAt: now,
+      updatedAt: now,
+    };
+    await saveProfile(profile);
+    setProfiles((list) => [...list, profile]);
+    await chooseProfile(profile);
+  };
+
+  const removeProfile = async (profile: Profile) => {
+    await deleteProfile(profile.id);
+    setProfiles((list) => list.filter((item) => item.id !== profile.id));
+    if (activeProfile?.id !== profile.id) return;
+    profileRef.current = null;
+    drawingIdRef.current = null;
+    setActiveProfile(null);
+    setDrawings([]);
+    setSavedArtwork(null);
+    setSessionStarted(false);
+    setChooserOpen(false);
+    setProfileGateOpen(true);
+  };
+
   const chooseBlankCanvas = () => {
+    startNewDrawing('Blank drawing');
     if (sessionStarted) clearArt();
     else notify('Blank canvas ready');
     beginSession();
@@ -1025,7 +1172,9 @@ export function App() {
       future.current = [];
       applySnapshot(savedArtwork);
       refreshHistoryState();
-      notify('Your last drawing was restored');
+      notify('Welcome back!');
+    } else if (!drawingIdRef.current) {
+      startNewDrawing(drawingTitleRef.current || 'Drawing');
     }
     beginSession();
   };
@@ -1037,22 +1186,60 @@ export function App() {
   };
 
   const selectLibraryPage = (src: string, title: string) => {
+    startNewDrawing(title);
     loadLibraryPage(src, title);
     beginSession();
   };
 
-  const save = () => {
-    const output = document.createElement('canvas');
-    output.width = backingRef.current?.width ?? canvasSize.width;
-    output.height = backingRef.current?.height ?? canvasSize.height;
-    const context = output.getContext('2d')!;
-    context.drawImage(backingRef.current!, 0, 0);
-    objectsRef.current.forEach((object) => drawObject(context, object));
+  const openSavedDrawing = async (id: string) => {
+    const record = await getDrawing(id);
+    if (!record) {
+      notify('That drawing could not be opened');
+      return;
+    }
+    drawingIdRef.current = record.id;
+    drawingTitleRef.current = record.title;
+    drawingCreatedAtRef.current = record.createdAt;
+    history.current = [record.snapshot];
+    future.current = [];
+    applySnapshot(record.snapshot);
+    refreshHistoryState();
+    setSavedArtwork(record.snapshot);
+    notify(`${record.title} is ready`);
+    beginSession();
+  };
+
+  const removeDrawing = async (id: string) => {
+    await deleteDrawing(id);
+    setDrawings((list) => list.filter((drawing) => drawing.id !== id));
+    if (drawingIdRef.current === id) {
+      drawingIdRef.current = null;
+      setSavedArtwork(null);
+    }
+    notify('Drawing deleted');
+  };
+
+  const saveToGallery = async () => {
+    if (!profileRef.current) {
+      setProfileGateOpen(true);
+      return;
+    }
+    if (!drawingIdRef.current) startNewDrawing('Drawing');
+    await historyWorkRef.current;
+    const current = await snapshot();
+    await persistDrawing(current);
+    notify(`Saved to ${profileRef.current.name}’s drawings`);
+    setPanel(null);
+  };
+
+  const downloadPng = () => {
+    const output = compositeArt();
+    if (!output) return;
     const link = document.createElement('a');
     link.download = `color-pop-${new Date().toISOString().slice(0, 10)}.png`;
     link.href = output.toDataURL('image/png');
     link.click();
-    notify('Artwork saved as PNG');
+    notify('Artwork downloaded as PNG');
   };
 
   useEffect(() => {
@@ -1065,8 +1252,11 @@ export function App() {
         return;
       }
       if (isTyping) return;
-      if (chooserOpen) {
-        if (event.key === 'Escape') setPanel(null);
+      if (chooserOpen || profileGateOpen) {
+        if (event.key === 'Escape') {
+          setPanel(null);
+          if (profileGateOpen && activeProfile) setProfileGateOpen(false);
+        }
         return;
       }
       const modifier = event.metaKey || event.ctrlKey;
@@ -1076,7 +1266,7 @@ export function App() {
         event.shiftKey ? redo() : undo();
       } else if (modifier && key === 's') {
         event.preventDefault();
-        save();
+        saveToGallery();
       } else if (key === 'b') chooseTool('brush');
       else if (key === 'e') chooseTool('eraser');
       else if (key === 'f') chooseTool('fill');
@@ -1124,16 +1314,20 @@ export function App() {
   const selectedObject = objects.find((object) => object.id === selectedId) ?? null;
 
   return (
-    <main className={`app-shell${focusMode ? ' is-focus' : ''}${drawingActive ? ' is-drawing' : ''}${leftHanded ? ' is-left-handed' : ''}${stayInLines ? ' is-line-safe' : ''}${chooserOpen ? ' is-choosing' : ''}${dragColor ? ' is-color-dropping' : ''}`}>
+    <main className={`app-shell${focusMode ? ' is-focus' : ''}${drawingActive ? ' is-drawing' : ''}${leftHanded ? ' is-left-handed' : ''}${stayInLines ? ' is-line-safe' : ''}${chooserOpen || profileGateOpen ? ' is-choosing' : ''}${dragColor ? ' is-color-dropping' : ''}`}>
       <TopBar
         focusMode={focusMode}
         canUndo={historyState.undo}
         canRedo={historyState.redo}
+        profileName={activeProfile?.name ?? 'Artist'}
+        profileEmoji={activeProfile?.emoji ?? '🎨'}
+        profileColor={activeProfile?.color ?? '#eee8ff'}
         onUndo={() => void undo()}
         onRedo={() => void redo()}
         onFocus={() => void toggleFocusMode()}
-        onLibrary={() => setPanel('library')}
+        onLibrary={() => { setLibraryTab('pages'); setPanel('library'); }}
         onActions={() => setPanel(panel === 'actions' ? null : 'actions')}
+        onProfile={() => { setPanel(null); setProfileGateOpen(true); }}
       />
 
       <CanvasWorkspace
@@ -1217,22 +1411,43 @@ export function App() {
         onAddShape={(shape) => addObject(shape)}
         onAddSticker={(sticker) => addObject('sticker', sticker)}
         onUpload={() => fileRef.current?.click()}
-        onSave={save}
+        onSave={() => void saveToGallery()}
+        onDownload={downloadPng}
         onResetPage={resetPage}
         onClearArt={openNewCanvasChooser}
         onToggleFocus={() => void toggleFocusMode()}
         onToggleHanded={() => { setLeftHanded((value) => !value); haptic(8); }}
         onTolerance={setTolerance}
       />
-      {chooserOpen && panel !== 'library' && <StartChooser
+      {profileGateOpen && <ProfilePicker
+        profiles={profiles}
+        activeProfileId={activeProfile?.id ?? null}
+        onSelect={(profile) => void chooseProfile(profile)}
+        onCreate={(input) => void createProfile(input)}
+        onDelete={(profile) => void removeProfile(profile)}
+      />}
+      {chooserOpen && !profileGateOpen && panel !== 'library' && <StartChooser
+        profile={activeProfile}
         savedBitmap={savedArtwork?.bitmap ?? null}
+        savedCount={drawings.length}
         showContinue={sessionStarted || Boolean(savedArtwork?.bitmap)}
         sessionStarted={sessionStarted}
-        onColorDrawing={() => setPanel('library')}
+        onColorDrawing={() => { setLibraryTab('pages'); setPanel('library'); }}
         onBlankCanvas={chooseBlankCanvas}
+        onMyDrawings={() => { setLibraryTab('saved'); setPanel('library'); }}
         onContinue={chooseContinue}
+        onSwitchProfile={() => setProfileGateOpen(true)}
       />}
-      {panel === 'library' && <DrawingLibrary onClose={() => setPanel(null)} onSelect={selectLibraryPage} />}
+      {panel === 'library' && <DrawingLibrary
+        key={libraryTab}
+        initialTab={libraryTab}
+        savedDrawings={drawings}
+        artistName={activeProfile?.name ?? 'My'}
+        onClose={() => setPanel(null)}
+        onSelect={selectLibraryPage}
+        onSelectSaved={(id) => void openSavedDrawing(id)}
+        onDeleteSaved={(id) => void removeDrawing(id)}
+      />}
 
       <Palette tool={tool} brushType={brushType} color={color} onBrush={selectBrush} onPalettePointerDown={startColorDrag} onCustomColor={setColor} />
       <input ref={fileRef} className="visually-hidden" type="file" accept="image/png,image/jpeg,image/webp" onChange={(event) => { const file = event.target.files?.[0]; if (file) upload(file); event.target.value = ''; }} />

@@ -1,7 +1,8 @@
 export type ToolIconName =
   | 'brush' | 'eraser' | 'fill' | 'move' | 'shapes' | 'sticker' | 'reset' | 'droplet' | 'magic'
   | 'undo' | 'redo' | 'focus' | 'library' | 'more' | 'close' | 'upload' | 'download'
-  | 'newCanvas' | 'rotateLeft' | 'rotateRight' | 'fit' | 'plus' | 'page' | 'handedness' | 'continue' | 'chevronRight';
+  | 'newCanvas' | 'rotateLeft' | 'rotateRight' | 'fit' | 'plus' | 'page' | 'handedness' | 'continue' | 'chevronRight'
+  | 'save';
 
 type IconProps = { name: ToolIconName; size?: number };
 
@@ -121,6 +122,11 @@ export function ToolIcon({ name, size = 24 }: IconProps) {
   </svg>;
   if (name === 'chevronRight') return <svg {...svg}>
     <path d="m9 5.5 6.5 6.5L9 18.5" />
+  </svg>;
+  if (name === 'save') return <svg {...svg}>
+    <path d="M5.4 4.2h10.4L19.6 8v11.8a1.6 1.6 0 0 1-1.6 1.6H5.4A1.6 1.6 0 0 1 3.8 19.8V5.8A1.6 1.6 0 0 1 5.4 4.2Z" />
+    <path d="M8 4.2v5.2h7.2V4.2" />
+    <path d="M8.2 19.8v-5.4h7.6v5.4" />
   </svg>;
   if (name === 'handedness') return <svg {...svg}>
     <path d="M8.2 8.2 4.6 12l3.6 3.8" />

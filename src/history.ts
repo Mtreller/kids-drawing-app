@@ -19,6 +19,28 @@ export function bitmapSource(bitmap: string | Blob) {
   return { url, release: () => URL.revokeObjectURL(url) };
 }
 
+export function scaledCanvas(source: HTMLCanvasElement, maxSize: number) {
+  const scale = Math.min(1, maxSize / Math.max(source.width, source.height));
+  const canvas = document.createElement('canvas');
+  canvas.width = Math.max(1, Math.round(source.width * scale));
+  canvas.height = Math.max(1, Math.round(source.height * scale));
+  const context = canvas.getContext('2d');
+  if (!context) throw new Error('The canvas could not be scaled.');
+  context.fillStyle = '#ffffff';
+  context.fillRect(0, 0, canvas.width, canvas.height);
+  context.drawImage(source, 0, 0, canvas.width, canvas.height);
+  return canvas;
+}
+
+export function canvasToJpegBlob(canvas: HTMLCanvasElement, quality = .72) {
+  return new Promise<Blob>((resolve, reject) => {
+    canvas.toBlob((blob) => {
+      if (blob) resolve(blob);
+      else reject(new Error('The canvas could not be compressed.'));
+    }, 'image/jpeg', quality);
+  });
+}
+
 export function snapshotBytes(snapshot: Snapshot) {
   const bitmapBytes = typeof snapshot.bitmap === 'string'
     ? Math.ceil(snapshot.bitmap.length * .75)

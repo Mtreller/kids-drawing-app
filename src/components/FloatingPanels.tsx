@@ -32,7 +32,7 @@ export function FloatingPanels({
   panel, brushType, color, brushSize, brushMinimum, brushMaximum, opacity, flow, smoothing,
   stayInLines, tolerance, focusMode, leftHanded,
   onClose, onSelectBrush, onToggleStayInLines, onBrushSize, onOpacity, onFlow, onSmoothing,
-  onAddShape, onAddSticker, onUpload, onSave, onResetPage, onClearArt, onToggleFocus,
+  onAddShape, onAddSticker, onUpload, onSave, onDownload, onResetPage, onClearArt, onToggleFocus,
   onToggleHanded, onTolerance,
 }: {
   panel: PanelName;
@@ -59,6 +59,7 @@ export function FloatingPanels({
   onAddSticker: (sticker: string) => void;
   onUpload: () => void;
   onSave: () => void;
+  onDownload: () => void;
   onResetPage: () => void;
   onClearArt: () => void;
   onToggleFocus: () => void;
@@ -103,7 +104,8 @@ export function FloatingPanels({
     {panel === 'stickers' && <div className="popover sticker-popover">{stickers.map((item) => <button key={item} onClick={() => onAddSticker(item)}>{item}</button>)}</div>}
     {panel === 'actions' && <div className="popover actions-popover">
       <button type="button" onClick={onUpload}><ToolIcon name="upload" size={21} /> <span>Upload picture</span></button>
-      <button type="button" onClick={onSave}><ToolIcon name="download" size={21} /> <span>Save PNG</span></button>
+      <button type="button" onClick={onSave}><ToolIcon name="save" size={21} /> <span>Save to my drawings</span></button>
+      <button type="button" onClick={onDownload}><ToolIcon name="download" size={21} /> <span>Download PNG</span></button>
       <button type="button" onClick={onToggleStayInLines}><ToolIcon name="magic" size={21} /> <span>{stayInLines ? 'Free drawing mode' : 'Stay inside lines'}</span></button>
       <button type="button" onClick={onResetPage}><ToolIcon name="reset" size={21} /> <span>Reset page</span></button>
       <button type="button" onClick={onClearArt}><ToolIcon name="newCanvas" size={21} /> <span>New canvas</span></button>
