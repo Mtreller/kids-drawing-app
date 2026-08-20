@@ -34,10 +34,10 @@ export function useColorDropGesture({
     const { pointerId, pointerType, clientX: startX, clientY: startY } = event;
     const verticalPalette = isLandscapePalette();
     const source = event.currentTarget as HTMLElement;
-    const paletteScroller = source.closest<HTMLElement>('.palette__scroller');
     const fingerLift = pointerType === 'touch' ? 58 : 0;
     let filling = false;
     let scrolling = false;
+    let trackingFill = false;
     let lastX = startX;
     let lastY = startY;
 
@@ -45,13 +45,20 @@ export function useColorDropGesture({
       ? { x: x - fingerLift, y }
       : { x, y: y - fingerLift };
 
-    if (pointerType === 'touch') event.preventDefault();
-    try { source.setPointerCapture(pointerId); } catch { /* Window listeners still keep the drag reliable. */ }
     clearBrushCursor();
+
+    const listenForFillMoves = () => {
+      if (trackingFill) return;
+      trackingFill = true;
+      document.removeEventListener('pointermove', move, true);
+      document.addEventListener('pointermove', move, { capture: true, passive: false });
+    };
 
     const activateFill = () => {
       if (filling || scrolling) return;
       filling = true;
+      listenForFillMoves();
+      try { source.setPointerCapture(pointerId); } catch { /* Window listeners still keep the drag reliable. */ }
       setColor(swatchColor);
       activateFillTool();
       closePanels();
@@ -63,43 +70,30 @@ export function useColorDropGesture({
       previewColorDrop(point.x, point.y, swatchColor);
     };
 
-    const holdTimer = window.setTimeout(activateFill, pointerType === 'touch' ? 160 : 280);
-    const clearHold = () => window.clearTimeout(holdTimer);
     const cleanup = () => {
       document.removeEventListener('pointermove', move, true);
       document.removeEventListener('pointerup', up, true);
       document.removeEventListener('pointercancel', cancel, true);
-      clearHold();
       cleanupRef.current = null;
     };
     const move = (moveEvent: PointerEvent) => {
       if (moveEvent.pointerId !== pointerId) return;
-      const previousX = lastX;
-      const previousY = lastY;
       lastX = moveEvent.clientX;
       lastY = moveEvent.clientY;
       const deltaX = lastX - startX;
       const deltaY = lastY - startY;
       const along = verticalPalette ? Math.abs(deltaY) : Math.abs(deltaX);
       const across = verticalPalette ? Math.abs(deltaX) : Math.abs(deltaY);
-      const towardCanvas = verticalPalette ? deltaX < -6 : deltaY < -6;
+      const towardCanvas = verticalPalette ? deltaX < -4 : deltaY < -4;
 
       if (!filling && !scrolling) {
-        if (pointerType !== 'touch' && Math.hypot(deltaX, deltaY) > 6) activateFill();
-        else if (towardCanvas && across >= 8 && across >= along * .4) activateFill();
-        else if (pointerType === 'touch' && along > 10 && along > across) {
-          scrolling = true;
-          clearHold();
-        }
+        if (pointerType !== 'touch' && Math.hypot(deltaX, deltaY) > 4) activateFill();
+        else if (towardCanvas && across >= 6 && across > along) activateFill();
+        else if (pointerType === 'touch' && along > 4 && along >= across) scrolling = true;
       }
-      if (scrolling) {
-        moveEvent.preventDefault();
-        if (!paletteScroller) return;
-        if (verticalPalette) paletteScroller.scrollTop -= lastY - previousY;
-        else paletteScroller.scrollLeft -= lastX - previousX;
-        return;
-      }
+      if (scrolling) return;
       if (filling) {
+        if (!moveEvent.cancelable) return;
         moveEvent.preventDefault();
         const point = aim(lastX, lastY);
         setDragColor({ color: swatchColor, x: point.x, y: point.y });
@@ -111,7 +105,10 @@ export function useColorDropGesture({
       cleanup();
       setDragColor(null);
       clearFillPreview();
-      if (scrolling) return;
+      const along = verticalPalette
+        ? Math.abs(upEvent.clientY - startY)
+        : Math.abs(upEvent.clientX - startX);
+      if (scrolling || (!filling && along > 8)) return;
       if (!filling) { setColor(swatchColor); haptic(5); return; }
       const canvas = canvasRef.current;
       const point = aim(upEvent.clientX, upEvent.clientY);
@@ -126,7 +123,7 @@ export function useColorDropGesture({
       clearFillPreview();
     };
     cleanupRef.current = cleanup;
-    document.addEventListener('pointermove', move, { capture: true, passive: false });
+    document.addEventListener('pointermove', move, { capture: true, passive: true });
     document.addEventListener('pointerup', up, true);
     document.addEventListener('pointercancel', cancel, true);
   }, [

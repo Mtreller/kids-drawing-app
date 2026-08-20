@@ -100,7 +100,7 @@ export function CanvasWorkspace({
           <div className="side-controls__body">
             <span className="control-icon"><ToolIcon name="brush" size={17} /></span>
             <button className="control-value" type="button" aria-label="Open brush settings" onClick={onOpenBrush}>{brushSize}<small>px</small></button>
-            <VerticalRange label="Brush size" minimum={brushMinimum} maximum={brushMaximum} value={brushSize} onChange={onBrushSize} />
+            <VerticalRange label="Brush size" minimum={brushMinimum} maximum={brushMaximum} value={brushSize} onChange={onBrushSize} scale="log" />
             <span className="control-label">Size</span>
           </div>
         </aside>

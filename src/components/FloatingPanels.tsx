@@ -1,6 +1,7 @@
 import { type CSSProperties, useEffect, useRef } from 'react';
 import { brushPresets, renderBrushStroke, type BrushType } from '../brushes';
 import { ToolIcon } from '../icons';
+import { LogRangeInput } from './Controls';
 import type { PanelName } from './Toolbars';
 
 const stickers = ['⭐', '🌈', '🦋', '🦖', '🐯', '🐙', '🌸', '❤️', '🚀', '☀️'];
@@ -88,7 +89,7 @@ export function FloatingPanels({
         <ToolIcon name="magic" size={23} /><span><b>Stay Inside Lines</b><small>Paint only inside the section you touch</small></span><em>{stayInLines ? 'On' : 'Off'}</em>
       </button>
       <div className="brush-preview"><BrushStrokePreview type={brushType} color={color} size={brushSize} alpha={Math.max(.12, opacity * flow)} /></div>
-      <label><span><b>Size</b><em>{brushSize}px</em></span><input className="polished-range" style={rangeStyle(brushSize, brushMinimum, brushMaximum)} type="range" min={brushMinimum} max={brushMaximum} value={brushSize} onChange={(event) => onBrushSize(Number(event.target.value))} /></label>
+      <label><span><b>Size</b><em>{brushSize}px</em></span><LogRangeInput className="polished-range" label="Brush size" minimum={brushMinimum} maximum={brushMaximum} value={brushSize} onChange={onBrushSize} /></label>
       <label><span><b>Opacity</b><em>{Math.round(opacity * 100)}%</em></span><input className="polished-range" style={rangeStyle(opacity * 100, 10, 100)} type="range" min="10" max="100" value={opacity * 100} onChange={(event) => onOpacity(Number(event.target.value) / 100)} /></label>
       <label><span><b>Flow</b><em>{Math.round(flow * 100)}%</em></span><input className="polished-range" style={rangeStyle(flow * 100, 5, 100)} type="range" min="5" max="100" value={flow * 100} onChange={(event) => onFlow(Number(event.target.value) / 100)} /></label>
       <label><span><b>Smoothing</b><em>{Math.round(smoothing * 100)}%</em></span><input className="polished-range" style={rangeStyle(smoothing * 100, 0, 90)} type="range" min="0" max="90" value={smoothing * 100} onChange={(event) => onSmoothing(Number(event.target.value) / 100)} /></label>
@@ -109,7 +110,7 @@ export function FloatingPanels({
       <button type="button" onClick={onToggleFocus}><ToolIcon name="focus" size={21} /> <span>{focusMode ? 'Exit focus mode' : 'Focus mode'}</span></button>
       <button type="button" onClick={onToggleHanded}><ToolIcon name="handedness" size={21} /> <span>{leftHanded ? 'Right-handed layout' : 'Left-handed layout'}</span></button>
       <label>Fill tolerance <b>{tolerance}</b><input type="range" min="5" max="80" value={tolerance} onChange={(event) => onTolerance(Number(event.target.value))} /></label>
-      <div className="input-hints"><span>✨ Stay Inside Lines locks paint to one section</span><span>🎨 Hold a color to start ColorDrop</span><span>✌️ Pinch to zoom • twist to rotate</span><span>🖱 Ctrl-wheel zoom • Space-drag pan</span></div>
+      <div className="input-hints"><span>✨ Stay Inside Lines locks paint to one section</span><span>🎨 Drag a color onto the drawing to fill</span><span>✌️ Pinch to zoom • twist to rotate</span><span>🖱 Ctrl-wheel zoom • Space-drag pan</span></div>
     </div>}
   </>;
 }
