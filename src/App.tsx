@@ -84,6 +84,14 @@ export function App() {
   const drawingIdRef = useRef<string | null>(null);
   const drawingTitleRef = useRef('Drawing');
   const drawingCreatedAtRef = useRef(Date.now());
+  const pendingSaveRef = useRef<{
+    snapshot: Snapshot;
+    profile: Profile;
+    drawingId: string;
+    title: string;
+    createdAt: number;
+  } | null>(null);
+  const autosaveTimerRef = useRef<number | null>(null);
 
   const [tool, setTool] = useState<Tool>('brush');
   const [color, setColor] = useState(colors[9]);
@@ -281,21 +289,26 @@ export function App() {
     return output;
   }, []);
 
-  const persistDrawing = useCallback(async (current: Snapshot) => {
-    const profile = profileRef.current;
-    const drawingId = drawingIdRef.current;
-    if (!profile || !drawingId) return;
+  const persistDrawing = useCallback(async (current: Snapshot, identity?: {
+    profile: Profile;
+    drawingId: string;
+    title: string;
+    createdAt: number;
+  }) => {
+    const profile = identity?.profile ?? profileRef.current;
+    const drawingId = identity?.drawingId ?? drawingIdRef.current;
+    if (!profile || !drawingId) throw new Error('Pick an artist before saving.');
     const art = compositeArt();
     const thumbnail = art
-      ? await canvasToJpegBlob(scaledCanvas(art, 360))
+      ? await canvasToJpegBlob(scaledCanvas(art, 360)).catch(() => canvasToPngBlob(scaledCanvas(art, 360)))
       : await makeThumbnail(current);
     const record: SavedDrawing = {
       id: drawingId,
       profileId: profile.id,
-      title: drawingTitleRef.current,
+      title: identity?.title ?? drawingTitleRef.current,
       snapshot: current,
       thumbnail,
-      createdAt: drawingCreatedAtRef.current,
+      createdAt: identity?.createdAt ?? drawingCreatedAtRef.current,
       updatedAt: Date.now(),
     };
     await saveDrawing(record);
@@ -311,18 +324,66 @@ export function App() {
     setSavedArtwork(current);
   }, [compositeArt]);
 
-  const pushHistory = useCallback(() => {
+  const scheduleAutosave = useCallback((current: Snapshot) => {
+    const profile = profileRef.current;
+    const drawingId = drawingIdRef.current;
+    if (!profile || !drawingId) return;
+    pendingSaveRef.current = {
+      snapshot: current,
+      profile,
+      drawingId,
+      title: drawingTitleRef.current,
+      createdAt: drawingCreatedAtRef.current,
+    };
+    if (autosaveTimerRef.current) window.clearTimeout(autosaveTimerRef.current);
+    autosaveTimerRef.current = window.setTimeout(() => {
+      autosaveTimerRef.current = null;
+      const pending = pendingSaveRef.current;
+      pendingSaveRef.current = null;
+      if (!pending) return;
+      void persistDrawing(pending.snapshot, pending).catch(() => undefined);
+    }, 400);
+  }, [persistDrawing]);
+
+  const flushAutosave = useCallback(async () => {
+    if (autosaveTimerRef.current) {
+      window.clearTimeout(autosaveTimerRef.current);
+      autosaveTimerRef.current = null;
+    }
+    const pending = pendingSaveRef.current;
+    pendingSaveRef.current = null;
+    if (pending) {
+      await persistDrawing(pending.snapshot, pending);
+      return;
+    }
+    if (!profileRef.current || !drawingIdRef.current) return;
+    await persistDrawing(await snapshot());
+  }, [persistDrawing, snapshot]);
+
+  const commitCanvas = useCallback((persist: 'now' | 'soon' = 'soon') => {
     const pendingSnapshot = snapshot();
+    const identity = profileRef.current && drawingIdRef.current ? {
+      profile: profileRef.current,
+      drawingId: drawingIdRef.current,
+      title: drawingTitleRef.current,
+      createdAt: drawingCreatedAtRef.current,
+    } : null;
     historyWorkRef.current = historyWorkRef.current.then(async () => {
       const current = await pendingSnapshot;
       history.current.push(current);
       trimHistory(history.current);
       future.current = [];
       refreshHistoryState();
-      await persistDrawing(current);
+      if (!identity) return;
+      if (persist === 'now') {
+        pendingSaveRef.current = null;
+        await persistDrawing(current, identity);
+      } else scheduleAutosave(current);
     }).catch(() => undefined);
     return historyWorkRef.current;
-  }, [persistDrawing, snapshot]);
+  }, [persistDrawing, scheduleAutosave, snapshot]);
+
+  const pushHistory = useCallback(() => commitCanvas('soon'), [commitCanvas]);
 
   const applySnapshot = useCallback((next: Snapshot) => {
     const backing = backingRef.current;
@@ -390,10 +451,7 @@ export function App() {
   }, [applySnapshot, capturePageBase]);
 
   useEffect(() => {
-    const flush = () => {
-      if (!profileRef.current || !drawingIdRef.current) return;
-      void snapshot().then((current) => persistDrawing(current)).catch(() => undefined);
-    };
+    const flush = () => { void flushAutosave().catch(() => undefined); };
     const onHide = () => { if (document.visibilityState === 'hidden') flush(); };
     document.addEventListener('visibilitychange', onHide);
     window.addEventListener('pagehide', flush);
@@ -401,7 +459,7 @@ export function App() {
       document.removeEventListener('visibilitychange', onHide);
       window.removeEventListener('pagehide', flush);
     };
-  }, [persistDrawing, snapshot]);
+  }, [flushAutosave]);
 
   const updateObjects = (updater: (items: ArtObject[]) => ArtObject[]) => {
     const next = updater(objectsRef.current);
@@ -570,7 +628,7 @@ export function App() {
     }
     if (backingRef.current && fillRegion(backingRef.current, point, fillColor, tolerance)) {
       setRevision((value) => value + 1);
-      window.setTimeout(pushHistory);
+      window.setTimeout(() => void commitCanvas('now'));
       haptic(10);
       notify('Area filled!');
     } else notify('Try another enclosed area');
@@ -994,7 +1052,7 @@ export function App() {
     setObjects([]);
     setSelectedId(null);
     setRevision((value) => value + 1);
-    window.setTimeout(pushHistory);
+    window.setTimeout(() => void commitCanvas('now'));
     notify('Fresh canvas ready');
   };
 
@@ -1021,7 +1079,7 @@ export function App() {
       setPan({ x: 0, y: 0 });
       setCanvasRotation(0);
       setPanel(null);
-      window.setTimeout(pushHistory);
+      window.setTimeout(() => void commitCanvas('now'));
       haptic([8, 35, 8]);
       notify('Page reset • Undo brings your work back');
       source.release();
@@ -1060,7 +1118,7 @@ export function App() {
       setZoom(1);
       setPan({ x: 0, y: 0 });
       setCanvasRotation(0);
-      window.setTimeout(pushHistory);
+      window.setTimeout(() => void commitCanvas('now'));
       setPanel(null);
       notify(successMessage);
   };
@@ -1089,7 +1147,8 @@ export function App() {
     setDrawingActive(false);
   };
 
-  const startNewDrawing = (title: string) => {
+  const startNewDrawing = async (title: string) => {
+    await flushAutosave().catch(() => undefined);
     drawingIdRef.current = makeId();
     drawingTitleRef.current = title;
     drawingCreatedAtRef.current = Date.now();
@@ -1160,10 +1219,26 @@ export function App() {
   };
 
   const chooseBlankCanvas = () => {
-    startNewDrawing('Blank drawing');
-    if (sessionStarted) clearArt();
-    else notify('Blank canvas ready');
-    beginSession();
+    void (async () => {
+      await startNewDrawing('Blank drawing');
+      if (sessionStarted) {
+        const backing = backingRef.current;
+        const context = backing?.getContext('2d');
+        if (context && backing) {
+          context.globalCompositeOperation = 'source-over';
+          context.fillStyle = '#ffffff';
+          context.fillRect(0, 0, backing.width, backing.height);
+          capturePageBase(backing);
+          objectsRef.current = [];
+          setObjects([]);
+          setSelectedId(null);
+          setRevision((value) => value + 1);
+        }
+      }
+      await commitCanvas('now');
+      notify(sessionStarted ? 'Fresh canvas ready' : 'Blank canvas ready');
+      beginSession();
+    })();
   };
 
   const chooseContinue = () => {
@@ -1174,7 +1249,7 @@ export function App() {
       refreshHistoryState();
       notify('Welcome back!');
     } else if (!drawingIdRef.current) {
-      startNewDrawing(drawingTitleRef.current || 'Drawing');
+      void startNewDrawing(drawingTitleRef.current || 'Drawing').then(() => commitCanvas('now'));
     }
     beginSession();
   };
@@ -1186,9 +1261,10 @@ export function App() {
   };
 
   const selectLibraryPage = (src: string, title: string) => {
-    startNewDrawing(title);
-    loadLibraryPage(src, title);
-    beginSession();
+    void startNewDrawing(title).then(() => {
+      loadLibraryPage(src, title);
+      beginSession();
+    });
   };
 
   const openSavedDrawing = async (id: string) => {
@@ -1220,16 +1296,25 @@ export function App() {
   };
 
   const saveToGallery = async () => {
-    if (!profileRef.current) {
-      setProfileGateOpen(true);
-      return;
+    try {
+      if (!profileRef.current) {
+        setProfileGateOpen(true);
+        return;
+      }
+      if (!drawingIdRef.current) await startNewDrawing('Drawing');
+      if (autosaveTimerRef.current) {
+        window.clearTimeout(autosaveTimerRef.current);
+        autosaveTimerRef.current = null;
+      }
+      pendingSaveRef.current = null;
+      await historyWorkRef.current;
+      await persistDrawing(await snapshot());
+      notify(`Saved to ${profileRef.current.name}’s drawings`);
+    } catch {
+      notify('Could not save that drawing. Try again.');
+    } finally {
+      setPanel(null);
     }
-    if (!drawingIdRef.current) startNewDrawing('Drawing');
-    await historyWorkRef.current;
-    const current = await snapshot();
-    await persistDrawing(current);
-    notify(`Saved to ${profileRef.current.name}’s drawings`);
-    setPanel(null);
   };
 
   const downloadPng = () => {
