@@ -546,10 +546,10 @@ export function App() {
     context.save();
     context.globalCompositeOperation = 'source-over';
     if (object) {
-      context.globalAlpha = .28;
+      context.globalAlpha = .38;
       drawObject(context, { ...object, color: previewColor });
     } else if (mask) {
-      context.globalAlpha = .24;
+      context.globalAlpha = .34;
       context.fillStyle = previewColor;
       context.fillRect(0, 0, preview.width, preview.height);
       context.globalAlpha = 1;
@@ -559,6 +559,7 @@ export function App() {
     context.restore();
     fillPreviewTargetRef.current = target;
     setFillPreviewActive(true);
+    haptic(6);
     setMessage('Release to fill the highlighted section');
   };
 
@@ -1122,7 +1123,7 @@ export function App() {
   const selectedObject = objects.find((object) => object.id === selectedId) ?? null;
 
   return (
-    <main className={`app-shell${focusMode ? ' is-focus' : ''}${drawingActive ? ' is-drawing' : ''}${leftHanded ? ' is-left-handed' : ''}${stayInLines ? ' is-line-safe' : ''}${chooserOpen ? ' is-choosing' : ''}`}>
+    <main className={`app-shell${focusMode ? ' is-focus' : ''}${drawingActive ? ' is-drawing' : ''}${leftHanded ? ' is-left-handed' : ''}${stayInLines ? ' is-line-safe' : ''}${chooserOpen ? ' is-choosing' : ''}${dragColor ? ' is-color-dropping' : ''}`}>
       <TopBar
         focusMode={focusMode}
         canUndo={historyState.undo}
@@ -1160,6 +1161,7 @@ export function App() {
         onBrushSize={setBrushSize}
         onOpacity={setOpacity}
         onOpenBrush={() => setPanel(panel === 'brush' ? null : 'brush')}
+        drawingActive={drawingActive}
         canvasSize={canvasSize}
         displaySize={displaySize}
         pan={pan}
@@ -1233,7 +1235,7 @@ export function App() {
 
       <Palette tool={tool} brushType={brushType} color={color} onBrush={selectBrush} onColorPointerDown={startColorDrag} onCustomColor={setColor} />
       <input ref={fileRef} className="visually-hidden" type="file" accept="image/png,image/jpeg,image/webp" onChange={(event) => { const file = event.target.files?.[0]; if (file) upload(file); event.target.value = ''; }} />
-      {dragColor && <div className="color-drop-orb" style={{ left: dragColor.x, top: dragColor.y, backgroundColor: dragColor.color }} />}
+      {dragColor && <div className={`color-drop-orb${fillPreviewActive ? ' is-over-target' : ''}`} style={{ left: dragColor.x, top: dragColor.y, backgroundColor: dragColor.color }} />}
     </main>
   );
 }

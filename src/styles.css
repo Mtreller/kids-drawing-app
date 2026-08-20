@@ -102,11 +102,9 @@ body.ios-focus-fallback .app-shell { position: sticky; top: 0; }
   position: static;
   z-index: 3;
   flex: 0 0 64px;
-  display: grid;
-  grid-template-rows: 34px auto auto auto;
-  justify-items: center;
-  align-items: center;
-  gap: 7px;
+  display: flex;
+  flex-direction: row;
+  align-items: stretch;
   width: 64px;
   padding: 10px 7px 12px;
   border: 1px solid rgb(255 255 255 / 78%);
@@ -115,6 +113,15 @@ body.ios-focus-fallback .app-shell { position: sticky; top: 0; }
   box-shadow: 0 12px 32px rgb(53 39 78 / 14%);
   backdrop-filter: blur(18px);
   transform: none;
+}
+.side-controls__toggle { display: none; }
+.side-controls__body {
+  display: grid;
+  grid-template-rows: 34px auto auto auto;
+  justify-items: center;
+  align-items: center;
+  gap: 7px;
+  width: 100%;
 }
 .vertical-range-wrap { position: relative; width: 32px; height: clamp(110px, 22vh, 180px); }
 .side-controls input[type="range"] {
@@ -196,6 +203,8 @@ html:-webkit-full-screen .app-shell .workspace-hud {
 .app-shell.is-drawing .topbar, .app-shell.is-drawing .palette, .app-shell.is-drawing .tool-dock, .app-shell.is-drawing .side-controls { opacity: 0; pointer-events: none; }
 .app-shell.is-drawing .tool-dock { transform: translate(-50%, 18px); }
 .app-shell.is-focus.is-drawing .topbar, .app-shell.is-focus.is-drawing .palette { opacity: 1; pointer-events: auto; }
+.app-shell.is-color-dropping .topbar, .app-shell.is-color-dropping .tool-dock, .app-shell.is-color-dropping .side-controls { opacity: .22; pointer-events: none; }
+.app-shell.is-color-dropping .palette { opacity: .42; pointer-events: none; }
 .app-shell.is-choosing .tool-dock, .app-shell.is-choosing .side-controls, .app-shell.is-choosing .workspace-hud { visibility: hidden; }
 
 .app-shell.is-left-handed .canvas-cluster { flex-direction: row-reverse; }
@@ -273,7 +282,9 @@ html:-webkit-full-screen .app-shell .workspace-hud {
 .brush-popover label > span { display: flex; align-items: center; justify-content: space-between; color: #494253; font-size: 12px; }
 .brush-popover label em { color: #755cff; font-size: 11px; font-style: normal; font-weight: 900; }
 .brush-popover .polished-range { width: 100%; margin: 0; }
-.color-drop-orb { position: fixed; z-index: 99; width: 60px; height: 60px; border: 6px solid white; border-radius: 50%; box-shadow: 0 14px 32px rgb(38 30 54 / 38%); transform: translate(-50%, -50%); pointer-events: none; }
+.color-drop-orb { position: fixed; z-index: 99; width: 54px; height: 54px; border: 5px solid white; border-radius: 50%; box-shadow: 0 12px 28px rgb(38 30 54 / 38%), 0 0 0 2px rgb(117 92 255 / 28%); transform: translate(-50%, -50%); pointer-events: none; }
+.color-drop-orb::after { content: ''; position: absolute; left: 50%; top: 50%; width: 8px; height: 8px; border: 2px solid white; border-radius: 50%; transform: translate(-50%, -50%); box-shadow: 0 0 0 1px rgb(38 30 54 / 35%); }
+.color-drop-orb.is-over-target { transform: translate(-50%, -50%) scale(1.14); box-shadow: 0 14px 32px rgb(38 30 54 / 42%), 0 0 0 5px rgb(117 92 255 / 38%); }
 .visually-hidden { position: fixed; width: 1px; height: 1px; overflow: hidden; opacity: 0; pointer-events: none; }
 
 .library-backdrop { position: fixed; z-index: 30; inset: 0; display: grid; place-items: center; padding: 20px; background: rgb(31 24 48 / 48%); backdrop-filter: blur(8px); }
@@ -363,11 +374,11 @@ html:-webkit-full-screen .app-shell .workspace-hud {
 .palette { min-width: 0; padding: 10px max(14px, env(safe-area-inset-right)) max(10px, env(safe-area-inset-bottom)) max(14px, env(safe-area-inset-left)); border-top: 1px solid #e3ddeb; background: rgb(255 255 255 / 90%); }
 .palette__scroller { display: flex; justify-content: flex-start; gap: 11px; overflow-x: auto; overscroll-behavior-x: contain; scrollbar-width: none; touch-action: pan-x; }
 .palette__scroller::-webkit-scrollbar { display: none; }
-.magic-brush-button { flex: 0 0 auto; width: 42px; height: 42px; padding: 0; overflow: hidden; border: 3px solid white; border-radius: 13px; background: linear-gradient(145deg, #f7f4fb, #eae4f3); box-shadow: 0 0 0 1px #d8d1df, 0 5px 12px rgb(44 33 64 / 14%); cursor: pointer; touch-action: pan-x; transition: transform .16s ease, box-shadow .16s ease; }
+.magic-brush-button { flex: 0 0 auto; width: 42px; height: 42px; padding: 0; overflow: hidden; border: 3px solid white; border-radius: 13px; background: linear-gradient(145deg, #f7f4fb, #eae4f3); box-shadow: 0 0 0 1px #d8d1df, 0 5px 12px rgb(44 33 64 / 14%); cursor: pointer; touch-action: none; transition: transform .16s ease, box-shadow .16s ease; }
 .magic-brush-button canvas { width: 100%; height: 100%; display: block; pointer-events: none; }
 .magic-brush-button.is-selected { transform: translateY(-3px) scale(1.08); box-shadow: 0 0 0 3px #755cff, 0 8px 16px rgb(44 33 64 / 20%); }
 .magic-brush-divider { width: 1px; height: 34px; flex: 0 0 auto; align-self: center; margin-inline: 2px; background: #d8d1df; }
-.swatch { flex: 0 0 auto; width: 42px; height: 42px; border: 4px solid white; border-radius: 50%; box-shadow: 0 0 0 1px #d8d1df, 0 5px 12px rgb(44 33 64 / 14%); cursor: pointer; touch-action: pan-x; user-select: none; -webkit-user-select: none; -webkit-user-drag: none; -webkit-touch-callout: none; transition: transform .16s ease; }
+.swatch { flex: 0 0 auto; width: 42px; height: 42px; border: 4px solid white; border-radius: 50%; box-shadow: 0 0 0 1px #d8d1df, 0 5px 12px rgb(44 33 64 / 14%); cursor: pointer; touch-action: none; user-select: none; -webkit-user-select: none; -webkit-user-drag: none; -webkit-touch-callout: none; transition: transform .16s ease; }
 .swatch.is-selected { transform: translateY(-3px) scale(1.08); box-shadow: 0 0 0 3px #755cff, 0 8px 16px rgb(44 33 64 / 20%); }
 .swatch--picker { color: #716a7c; font-size: 24px; background: conic-gradient(#ff5c77, #ffd93d, #52d681, #3eb8f0, #755cff, #ff5c77); }
 .swatch--picker { position: relative; display: grid; place-items: center; overflow: hidden; }
@@ -376,12 +387,12 @@ html:-webkit-full-screen .app-shell .workspace-hud {
 .icon-button:disabled { opacity: .35; cursor: default; }
 
 @media (max-width: 680px) {
-  .app-shell { --bar-height: 56px; --palette-offset: 64px; }
+  .app-shell { --bar-height: 56px; --dock-offset: 62px; --palette-offset: 128px; }
   .topbar { padding: max(8px, env(safe-area-inset-top)) max(10px, env(safe-area-inset-right)) 8px max(10px, env(safe-area-inset-left)); }
   .brand > span:last-child { display: none; }
   .gallery-button, .library-button { width: 44px; min-width: 44px; padding: 0; }
   .gallery-button b, .library-button b { display: none; }
-  .workspace { grid-template-rows: minmax(0, 1fr); gap: 0; padding: 6px 6px 10px; }
+  .workspace { grid-template-rows: minmax(0, 1fr); gap: 0; padding: 6px 6px 66px; }
   .workspace-hud { position: absolute; z-index: 6; top: 6px; left: 6px; right: 6px; gap: 5px; overflow-x: auto; scrollbar-width: none; }
   .workspace-hud::-webkit-scrollbar { display: none; }
   .status-pill { min-width: 120px; flex-basis: 120px; padding: 7px 9px; font-size: 9px; }
@@ -398,13 +409,52 @@ html:-webkit-full-screen .app-shell .workspace-hud {
     position: absolute;
     z-index: 4;
     top: 50%;
+    width: auto;
+    flex-basis: auto;
+    gap: 0;
+    padding: 0;
+    overflow: hidden;
+    transform: translateY(-50%);
+  }
+  .side-controls__toggle {
+    display: grid;
+    flex: 0 0 32px;
+    width: 32px;
+    min-height: 56px;
+    place-items: center;
+    align-self: center;
+    padding: 0;
+    color: #5f4ab5;
+    background: transparent;
+    cursor: pointer;
+  }
+  .side-controls__toggle svg { width: 16px; height: 16px; transition: transform .16s ease; }
+  .side-controls.is-open .side-controls__toggle svg { transform: rotate(180deg); }
+  .side-controls--right .side-controls__toggle svg,
+  .app-shell.is-left-handed .side-controls:not(.side-controls--right) .side-controls__toggle svg { transform: rotate(180deg); }
+  .side-controls--right.is-open .side-controls__toggle svg,
+  .app-shell.is-left-handed .side-controls:not(.side-controls--right).is-open .side-controls__toggle svg { transform: none; }
+  .app-shell.is-left-handed .side-controls--right .side-controls__toggle svg { transform: none; }
+  .app-shell.is-left-handed .side-controls--right.is-open .side-controls__toggle svg { transform: rotate(180deg); }
+  .side-controls--right,
+  .app-shell.is-left-handed .side-controls:not(.side-controls--right) { flex-direction: row-reverse; }
+  .app-shell.is-left-handed .side-controls--right { flex-direction: row; }
+  .side-controls.is-collapsed {
+    width: 32px;
+    min-width: 32px;
+    padding: 10px 0;
+    border-radius: 0 16px 16px 0;
+    background: rgb(255 255 255 / 86%);
+  }
+  .side-controls--right.is-collapsed,
+  .app-shell.is-left-handed .side-controls:not(.side-controls--right).is-collapsed { border-radius: 16px 0 0 16px; }
+  .app-shell.is-left-handed .side-controls--right.is-collapsed { border-radius: 0 16px 16px 0; }
+  .side-controls.is-collapsed .side-controls__body { display: none; }
+  .side-controls.is-open { padding: 8px 2px 9px; border-radius: 19px; }
+  .side-controls.is-open .side-controls__body {
     width: 52px;
-    flex-basis: 52px;
     grid-template-rows: 32px auto auto auto;
     gap: 5px;
-    padding: 8px 2px 9px;
-    border-radius: 19px;
-    transform: translateY(-50%);
   }
   .side-controls:not(.side-controls--right) { left: 4px; }
   .side-controls--right { right: 4px; left: auto; }
@@ -416,12 +466,47 @@ html:-webkit-full-screen .app-shell .workspace-hud {
   .side-controls .control-value { width: 47px; font-size: 11px; }
   .side-controls .control-label { font-size: 8px; }
   .side-controls .icon-button { min-width: 38px; width: 38px; height: 38px; }
-  .tool-dock { bottom: calc(var(--palette-offset) + env(safe-area-inset-bottom, 0px)); gap: 4px; padding: 6px; }
+  .tool-dock {
+    position: relative;
+    left: auto;
+    bottom: auto;
+    z-index: 6;
+    display: flex;
+    justify-content: center;
+    gap: 4px;
+    width: 100%;
+    max-width: none;
+    padding: 8px 8px max(8px, env(safe-area-inset-bottom, 0px));
+    overflow-x: auto;
+    border: 0;
+    border-top: 1px solid #e3ddeb;
+    border-radius: 0;
+    background: rgb(255 255 255 / 92%);
+    box-shadow: none;
+    transform: none;
+  }
   .tool-dock .icon-button { min-width: 42px; width: 42px; height: 44px; }
   .tool-dock .icon-button svg { width: 24px; height: 24px; }
-  .palette__scroller { justify-content: flex-start; padding: 3px; }
-  .swatch, .magic-brush-button { width: 38px; height: 38px; }
-  .shapes-popover, .sticker-popover, .brush-popover { bottom: calc(var(--palette-offset) + 62px + env(safe-area-inset-bottom, 0px)); }
+  .palette {
+    position: fixed;
+    z-index: 7;
+    left: 8px;
+    right: 8px;
+    bottom: calc(var(--dock-offset) + env(safe-area-inset-bottom, 0px));
+    width: auto;
+    padding: 8px;
+    border: 1px solid rgb(255 255 255 / 85%);
+    border-radius: 22px;
+    background: rgb(255 255 255 / 92%);
+    box-shadow: 0 16px 40px rgb(58 41 87 / 20%);
+    backdrop-filter: blur(22px);
+  }
+  .palette__scroller { justify-content: flex-start; padding: 2px; touch-action: none; }
+  .swatch, .magic-brush-button { width: 40px; height: 40px; }
+  .app-shell.is-drawing .tool-dock { transform: translateY(12px); }
+  .app-shell.is-drawing .palette { transform: translateY(10px); }
+  .app-shell.is-focus .tool-dock { bottom: auto; }
+  .shapes-popover, .sticker-popover, .brush-popover { bottom: calc(var(--palette-offset) + env(safe-area-inset-bottom, 0px)); }
   .brush-popover { max-height: calc(100dvh - 146px); }
   .brush-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); }
   .brush-popover .brush-card { min-height: 58px; }
@@ -454,7 +539,7 @@ html:-webkit-full-screen .app-shell .workspace-hud {
   .topbar__actions { gap: 4px; }
   .topbar .icon-button, .topbar .gallery-button, .topbar .library-button { min-width: 34px; width: 34px; height: 34px; padding: 0; border-radius: 11px; }
   .topbar .gallery-button b, .topbar .library-button b { display: none; }
-  .workspace, .app-shell.is-focus .workspace, .app-shell.is-left-handed .workspace, .app-shell.is-left-handed.is-focus .workspace { grid-template-rows: minmax(0, 1fr); gap: 0; padding: 3px 58px 3px 8px; }
+  .workspace, .app-shell.is-focus .workspace, .app-shell.is-left-handed .workspace, .app-shell.is-left-handed.is-focus .workspace { grid-template-rows: minmax(0, 1fr); gap: 0; padding: 3px 96px 3px 8px; }
   .workspace-hud { position: fixed; z-index: 8; top: 0; left: 0; width: 0; height: 0; min-height: 0; overflow: visible; }
   .status-pill { position: fixed; top: 7px; left: max(62px, calc(env(safe-area-inset-left) + 62px)); width: 130px; min-width: 0; display: block; padding: 6px 8px; font-size: 8px; background: rgb(245 242 250 / 90%); }
   .line-mode-badge { position: fixed; top: 6px; left: max(44px, calc(env(safe-area-inset-left) + 44px)); padding: 5px 7px; }
@@ -465,14 +550,20 @@ html:-webkit-full-screen .app-shell .workspace-hud {
   .view-controls .rotation-reset { min-width: 34px; }
   .view-controls .zoom-reset { min-width: 47px; }
   .tool-dock, .app-shell.is-focus .tool-dock {
+    position: fixed;
     left: auto;
-    right: max(52px, calc(env(safe-area-inset-right) + 46px));
+    right: max(4px, env(safe-area-inset-right));
     bottom: 50%;
     grid-template-columns: repeat(2, 36px);
     display: grid;
     gap: 3px;
+    width: auto;
+    max-width: none;
     padding: 5px;
+    border: 1px solid rgb(255 255 255 / 85%);
     border-radius: 18px;
+    background: rgb(255 255 255 / 88%);
+    box-shadow: 0 16px 40px rgb(58 41 87 / 20%);
     transform: translateY(50%);
   }
   .app-shell.is-left-handed .tool-dock { right: max(52px, calc(env(safe-area-inset-right) + 46px)); left: auto; }
@@ -484,14 +575,13 @@ html:-webkit-full-screen .app-shell .workspace-hud {
     position: fixed;
     z-index: 6;
     top: calc(50% + 21px);
-    left: max(52px, calc(env(safe-area-inset-left) + 48px));
-    width: 48px;
+    left: max(4px, env(safe-area-inset-left));
+    width: auto;
     height: auto;
-    flex-basis: 48px;
-    grid-template-rows: 28px auto auto auto;
-    gap: 3px;
-    padding: 5px 1px 6px;
-    border-radius: 17px;
+    flex-basis: auto;
+    gap: 0;
+    padding: 0;
+    overflow: hidden;
     transform: translateY(-50%);
   }
   .side-controls .control-icon { width: 28px; height: 28px; }
@@ -499,19 +589,21 @@ html:-webkit-full-screen .app-shell .workspace-hud {
   .side-controls .vertical-range-wrap { height: clamp(68px, 22vh, 92px); }
   .side-controls input[type="range"] { width: clamp(68px, 22vh, 92px); }
   .side-controls .control-label { font-size: 7px; }
+  .side-controls.is-open { padding: 5px 1px 6px; border-radius: 17px; }
+  .side-controls.is-open .side-controls__body { width: 48px; grid-template-rows: 28px auto auto auto; gap: 3px; }
   .canvas-cluster, .app-shell.is-left-handed .canvas-cluster { flex-direction: row; gap: 0; }
   .app-shell.is-focus .side-controls, .app-shell.is-focus .side-controls--right {
     position: fixed;
     top: calc(50% + 21px);
     transform: translateY(-50%);
   }
-  .canvas-cluster > .side-controls:not(.side-controls--right) { left: max(52px, calc(env(safe-area-inset-left) + 48px)); }
-  .side-controls--right { left: max(4px, env(safe-area-inset-left)); right: auto; display: grid; }
+  .canvas-cluster > .side-controls:not(.side-controls--right) { left: max(4px, env(safe-area-inset-left)); right: auto; }
+  .side-controls--right { left: max(40px, calc(env(safe-area-inset-left) + 36px)); right: auto; display: flex; }
   .palette, .app-shell.is-focus .palette {
     position: fixed;
     z-index: 7;
     top: calc(var(--bar-height) + 4px);
-    right: max(4px, env(safe-area-inset-right));
+    right: max(88px, calc(env(safe-area-inset-right) + 82px));
     bottom: max(4px, env(safe-area-inset-bottom));
     left: auto;
     width: 43px;
@@ -525,7 +617,7 @@ html:-webkit-full-screen .app-shell .workspace-hud {
     pointer-events: auto;
     backdrop-filter: blur(16px);
   }
-  .app-shell.is-left-handed .palette { right: max(4px, env(safe-area-inset-right)); left: auto; }
+  .app-shell.is-left-handed .palette { right: max(88px, calc(env(safe-area-inset-right) + 82px)); left: auto; }
   .palette__scroller { height: 100%; flex-direction: column; justify-content: flex-start; gap: 7px; padding: 1px; overflow-x: hidden; overflow-y: auto; touch-action: none; pointer-events: auto; }
   .swatch, .magic-brush-button { width: 34px; height: 34px; border-width: 3px; }
   .magic-brush-divider { width: 28px; height: 1px; margin: 2px 0; }

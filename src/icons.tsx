@@ -1,7 +1,7 @@
 export type ToolIconName =
   | 'brush' | 'eraser' | 'fill' | 'move' | 'shapes' | 'sticker' | 'reset' | 'droplet' | 'magic'
   | 'undo' | 'redo' | 'focus' | 'library' | 'more' | 'close' | 'upload' | 'download'
-  | 'newCanvas' | 'rotateLeft' | 'rotateRight' | 'fit' | 'plus' | 'page' | 'handedness' | 'continue';
+  | 'newCanvas' | 'rotateLeft' | 'rotateRight' | 'fit' | 'plus' | 'page' | 'handedness' | 'continue' | 'chevronRight';
 
 type IconProps = { name: ToolIconName; size?: number };
 
@@ -118,6 +118,9 @@ export function ToolIcon({ name, size = 24 }: IconProps) {
   if (name === 'continue') return <svg {...svg}>
     <circle cx="12" cy="12" r="8.2" />
     <path d="m10.2 8.4 5.2 3.6-5.2 3.6z" />
+  </svg>;
+  if (name === 'chevronRight') return <svg {...svg}>
+    <path d="m9 5.5 6.5 6.5L9 18.5" />
   </svg>;
   if (name === 'handedness') return <svg {...svg}>
     <path d="M8.2 8.2 4.6 12l3.6 3.8" />

@@ -1,4 +1,5 @@
 import type { CSSProperties, PointerEventHandler, RefObject, WheelEventHandler } from 'react';
+import { useEffect, useState } from 'react';
 import type { ArtObject, Point, Tool } from '../drawing';
 import { ToolIcon } from '../icons';
 import { VerticalRange } from './Controls';
@@ -10,7 +11,7 @@ export function CanvasWorkspace({
   onRotateSelected, onDeleteSelected, onRotateCanvas, onResetCanvasRotation, onResetView,
   onWheel, onStagePointerDown, onStagePointerMove, onStagePointerUp, onStagePointerCancel,
   clusterRef, sizeControlRef, opacityControlRef, brushSize, brushMinimum, brushMaximum, opacity, onBrushSize, onOpacity, onOpenBrush,
-  canvasSize, displaySize, pan, visibleRef, fillPreviewRef, fillPreviewActive, tool, brushCursor,
+  drawingActive, canvasSize, displaySize, pan, visibleRef, fillPreviewRef, fillPreviewActive, tool, brushCursor,
   onCanvasPointerDown, onCanvasPointerMove, onCanvasPointerUp, onCanvasPointerCancel,
   onCanvasPointerEnter, onCanvasPointerLeave,
 }: {
@@ -39,6 +40,7 @@ export function CanvasWorkspace({
   onBrushSize: (value: number) => void;
   onOpacity: (value: number) => void;
   onOpenBrush: () => void;
+  drawingActive: boolean;
   canvasSize: Size;
   displaySize: Size | null;
   pan: Point;
@@ -54,6 +56,15 @@ export function CanvasWorkspace({
   onCanvasPointerEnter: PointerEventHandler<HTMLCanvasElement>;
   onCanvasPointerLeave: PointerEventHandler<HTMLCanvasElement>;
 }) {
+  const [sizeOpen, setSizeOpen] = useState(false);
+  const [opacityOpen, setOpacityOpen] = useState(false);
+
+  useEffect(() => {
+    if (!drawingActive) return;
+    setSizeOpen(false);
+    setOpacityOpen(false);
+  }, [drawingActive]);
+
   return <section className="workspace" onWheel={onWheel}>
     <div className="workspace-hud">
       <div className="status-pill" role="status">{message}</div>
@@ -78,11 +89,20 @@ export function CanvasWorkspace({
       onPointerCancel={onStagePointerCancel}
     >
       <div className="canvas-cluster" ref={clusterRef}>
-        <aside className="side-controls" ref={sizeControlRef} aria-label="Brush size">
-          <span className="control-icon"><ToolIcon name="brush" size={17} /></span>
-          <button className="control-value" type="button" aria-label="Open brush settings" onClick={onOpenBrush}>{brushSize}<small>px</small></button>
-          <VerticalRange label="Brush size" minimum={brushMinimum} maximum={brushMaximum} value={brushSize} onChange={onBrushSize} />
-          <span className="control-label">Size</span>
+        <aside className={`side-controls${sizeOpen ? ' is-open' : ' is-collapsed'}`} ref={sizeControlRef} aria-label="Brush size">
+          <button
+            className="side-controls__toggle"
+            type="button"
+            aria-expanded={sizeOpen}
+            aria-label={sizeOpen ? 'Hide brush size' : 'Show brush size'}
+            onClick={() => setSizeOpen((open) => !open)}
+          ><ToolIcon name="chevronRight" size={16} /></button>
+          <div className="side-controls__body">
+            <span className="control-icon"><ToolIcon name="brush" size={17} /></span>
+            <button className="control-value" type="button" aria-label="Open brush settings" onClick={onOpenBrush}>{brushSize}<small>px</small></button>
+            <VerticalRange label="Brush size" minimum={brushMinimum} maximum={brushMaximum} value={brushSize} onChange={onBrushSize} />
+            <span className="control-label">Size</span>
+          </div>
         </aside>
         <div className="canvas-wrap" style={{
           '--page-ratio': canvasSize.width / canvasSize.height,
@@ -117,11 +137,20 @@ export function CanvasWorkspace({
             aria-hidden="true"
           />}
         </div>
-        <aside className="side-controls side-controls--right" ref={opacityControlRef} aria-label="Brush opacity">
-          <span className="control-icon"><ToolIcon name="droplet" size={17} /></span>
-          <button className="control-value" type="button" aria-label="Open brush settings" onClick={onOpenBrush}>{Math.round(opacity * 100)}<small>%</small></button>
-          <VerticalRange label="Brush opacity" minimum={10} maximum={100} value={opacity * 100} onChange={(value) => onOpacity(value / 100)} />
-          <span className="control-label">Opacity</span>
+        <aside className={`side-controls side-controls--right${opacityOpen ? ' is-open' : ' is-collapsed'}`} ref={opacityControlRef} aria-label="Brush opacity">
+          <button
+            className="side-controls__toggle"
+            type="button"
+            aria-expanded={opacityOpen}
+            aria-label={opacityOpen ? 'Hide brush opacity' : 'Show brush opacity'}
+            onClick={() => setOpacityOpen((open) => !open)}
+          ><ToolIcon name="chevronRight" size={16} /></button>
+          <div className="side-controls__body">
+            <span className="control-icon"><ToolIcon name="droplet" size={17} /></span>
+            <button className="control-value" type="button" aria-label="Open brush settings" onClick={onOpenBrush}>{Math.round(opacity * 100)}<small>%</small></button>
+            <VerticalRange label="Brush opacity" minimum={10} maximum={100} value={opacity * 100} onChange={(value) => onOpacity(value / 100)} />
+            <span className="control-label">Opacity</span>
+          </div>
         </aside>
       </div>
     </div>
