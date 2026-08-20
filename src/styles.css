@@ -592,7 +592,7 @@ html:-webkit-full-screen .app-shell .workspace-hud {
     position: fixed;
     z-index: 6;
     top: calc(50% + 21px);
-    left: max(4px, env(safe-area-inset-left));
+    left: 0;
     width: auto;
     height: auto;
     flex-basis: auto;
