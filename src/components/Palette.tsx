@@ -25,19 +25,20 @@ function MagicBrushPreview({ type, color }: { type: BrushType; color: string }) 
   return <canvas ref={previewRef} width="54" height="54" aria-hidden="true" />;
 }
 
-export function Palette({ tool, brushType, color, onBrush, onColorPointerDown, onCustomColor }: {
+export function Palette({ tool, brushType, color, onBrush, onPalettePointerDown, onCustomColor }: {
   tool: Tool;
   brushType: BrushType;
   color: string;
   onBrush: (brush: BrushType) => void;
-  onColorPointerDown: (event: React.PointerEvent<HTMLButtonElement>, color: string) => void;
+  onPalettePointerDown: (event: React.PointerEvent<HTMLElement>) => void;
   onCustomColor: (color: string) => void;
 }) {
-  return <footer className="palette" aria-label="Colors and magic brushes">
+  return <footer className="palette" aria-label="Colors and magic brushes" onPointerDown={onPalettePointerDown}>
     <div className="palette__scroller">
       {magicBrushes.map((brush) => <button
         key={brush.id}
         type="button"
+        data-brush={brush.id}
         className={`magic-brush-button${tool === 'brush' && brushType === brush.id ? ' is-selected' : ''}`}
         aria-label={`Select ${brush.name} brush`}
         title={`${brush.name} brush`}
@@ -47,10 +48,10 @@ export function Palette({ tool, brushType, color, onBrush, onColorPointerDown, o
       {colors.map((swatchColor) => <button
         key={swatchColor}
         type="button"
+        data-color={swatchColor}
         className={`swatch${color === swatchColor ? ' is-selected' : ''}`}
         style={{ backgroundColor: swatchColor }}
         aria-label={`Select or drag color ${swatchColor}`}
-        onPointerDown={(event) => onColorPointerDown(event, swatchColor)}
       />)}
       <label className="swatch swatch--picker" aria-label="Choose a custom color"><ToolIcon name="plus" size={18} /><input type="color" value={color} onChange={(event) => onCustomColor(event.target.value)} /></label>
     </div>
