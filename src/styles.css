@@ -155,8 +155,35 @@ body.ios-focus-fallback .app-shell { position: sticky; top: 0; }
 .view-controls .zoom-reset { min-width: 58px; color: white; font-size: 10px; background: #755cff; }
 .app-shell.is-focus { --bar-height: 56px; grid-template-rows: var(--bar-height) minmax(0, 1fr) auto; }
 .app-shell.is-focus .palette { visibility: visible; opacity: 1; pointer-events: auto; }
+html:fullscreen .app-shell .side-controls,
+html:-webkit-full-screen .app-shell .side-controls,
+.app-shell.is-focus .side-controls {
+  position: absolute;
+  z-index: 4;
+  top: 50%;
+  transform: translateY(-50%);
+}
+html:fullscreen .app-shell .side-controls:not(.side-controls--right),
+html:-webkit-full-screen .app-shell .side-controls:not(.side-controls--right),
+.app-shell.is-focus .side-controls:not(.side-controls--right) { left: 8px; }
+html:fullscreen .app-shell .side-controls--right,
+html:-webkit-full-screen .app-shell .side-controls--right,
+.app-shell.is-focus .side-controls--right { right: 8px; left: auto; }
+html:fullscreen .app-shell.is-left-handed .side-controls:not(.side-controls--right),
+html:-webkit-full-screen .app-shell.is-left-handed .side-controls:not(.side-controls--right),
+.app-shell.is-focus.is-left-handed .side-controls:not(.side-controls--right) { left: auto; right: 8px; }
+html:fullscreen .app-shell.is-left-handed .side-controls--right,
+html:-webkit-full-screen .app-shell.is-left-handed .side-controls--right,
+.app-shell.is-focus.is-left-handed .side-controls--right { right: auto; left: 8px; }
+html:fullscreen .app-shell .canvas-cluster,
+html:-webkit-full-screen .app-shell .canvas-cluster,
+.app-shell.is-focus .canvas-cluster { gap: 0; }
+html:fullscreen .app-shell .workspace,
+html:-webkit-full-screen .app-shell .workspace,
 .app-shell.is-focus .workspace { grid-template-rows: minmax(0, 1fr); gap: 0; padding: 6px 10px 10px; }
-.app-shell.is-focus .workspace-hud {
+.app-shell.is-focus .workspace-hud,
+html:fullscreen .app-shell .workspace-hud,
+html:-webkit-full-screen .app-shell .workspace-hud {
   position: absolute;
   z-index: 6;
   top: 8px;
@@ -165,17 +192,6 @@ body.ios-focus-fallback .app-shell { position: sticky; top: 0; }
   width: auto;
 }
 .app-shell.is-focus .status-pill { background: rgb(255 255 255 / 86%); }
-.app-shell.is-focus .side-controls {
-  position: absolute;
-  z-index: 4;
-  top: 50%;
-  transform: translateY(-50%);
-}
-.app-shell.is-focus .side-controls:not(.side-controls--right) { left: 8px; }
-.app-shell.is-focus .side-controls--right { right: 8px; left: auto; }
-.app-shell.is-focus.is-left-handed .side-controls:not(.side-controls--right) { left: auto; right: 8px; }
-.app-shell.is-focus.is-left-handed .side-controls--right { right: auto; left: 8px; }
-.app-shell.is-focus .canvas-cluster { gap: 0; }
 .app-shell.is-focus .tool-dock { bottom: calc(var(--palette-offset) + env(safe-area-inset-bottom, 0px)); }
 .app-shell.is-drawing .topbar, .app-shell.is-drawing .palette, .app-shell.is-drawing .tool-dock, .app-shell.is-drawing .side-controls { opacity: 0; pointer-events: none; }
 .app-shell.is-drawing .tool-dock { transform: translate(-50%, 18px); }
@@ -261,7 +277,7 @@ body.ios-focus-fallback .app-shell { position: sticky; top: 0; }
 .visually-hidden { position: fixed; width: 1px; height: 1px; overflow: hidden; opacity: 0; pointer-events: none; }
 
 .library-backdrop { position: fixed; z-index: 30; inset: 0; display: grid; place-items: center; padding: 20px; background: rgb(31 24 48 / 48%); backdrop-filter: blur(8px); }
-.library-panel { width: min(920px, 100%); max-height: min(760px, calc(100dvh - 32px)); overflow: auto; padding: clamp(18px, 4vw, 34px); border: 1px solid rgb(255 255 255 / 85%); border-radius: 32px; background: #fbf9ff; box-shadow: 0 30px 90px rgb(27 19 43 / 35%); }
+.library-panel { width: min(920px, 100%); max-height: min(760px, calc(100dvh - 32px - env(safe-area-inset-top, 0px) - env(safe-area-inset-bottom, 0px))); overflow: auto; padding: clamp(18px, 4vw, 34px); border: 1px solid rgb(255 255 255 / 85%); border-radius: 32px; background: #fbf9ff; box-shadow: 0 30px 90px rgb(27 19 43 / 35%); }
 .library-panel > header { display: flex; align-items: center; justify-content: space-between; gap: 20px; }
 .library-panel h2, .library-panel h3, .library-panel p { margin: 0; }
 .library-panel h2 { margin-top: 4px; font-size: clamp(26px, 5vw, 42px); letter-spacing: -.04em; }
@@ -355,6 +371,7 @@ body.ios-focus-fallback .app-shell { position: sticky; top: 0; }
 .swatch.is-selected { transform: translateY(-3px) scale(1.08); box-shadow: 0 0 0 3px #755cff, 0 8px 16px rgb(44 33 64 / 20%); }
 .swatch--picker { color: #716a7c; font-size: 24px; background: conic-gradient(#ff5c77, #ffd93d, #52d681, #3eb8f0, #755cff, #ff5c77); }
 .swatch--picker { position: relative; display: grid; place-items: center; overflow: hidden; }
+.swatch--picker svg { width: 18px; height: 18px; pointer-events: none; }
 .swatch--picker input { position: absolute; inset: 0; opacity: 0; cursor: pointer; }
 .icon-button:disabled { opacity: .35; cursor: default; }
 
@@ -409,7 +426,7 @@ body.ios-focus-fallback .app-shell { position: sticky; top: 0; }
   .brush-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); }
   .brush-popover .brush-card { min-height: 58px; }
   .library-backdrop, .start-chooser { padding: max(8px, env(safe-area-inset-top)) max(8px, env(safe-area-inset-right)) max(8px, env(safe-area-inset-bottom)) max(8px, env(safe-area-inset-left)); }
-  .library-panel, .start-chooser__panel { max-height: calc(100dvh - 16px); padding: 18px; border-radius: 25px; }
+  .library-panel, .start-chooser__panel { max-height: calc(100dvh - 16px - env(safe-area-inset-top, 0px) - env(safe-area-inset-bottom, 0px)); padding: 18px; border-radius: 25px; }
   .start-chooser__choices { grid-template-columns: 1fr; }
   .start-choice--continue { grid-template-columns: 96px minmax(0, 1fr); }
   .drawing-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 11px; }

@@ -1,6 +1,7 @@
 import { useEffect, useRef } from 'react';
 import { brushPresets, renderBrushStroke, type BrushType } from '../brushes';
 import type { Tool } from '../drawing';
+import { ToolIcon } from '../icons';
 
 export const colors = [
   '#ff385d', '#ff6b6b', '#ff9f43', '#ffc93c', '#f7e967', '#4fdd89', '#21b66f',
@@ -51,7 +52,7 @@ export function Palette({ tool, brushType, color, onBrush, onColorPointerDown, o
         aria-label={`Select or drag color ${swatchColor}`}
         onPointerDown={(event) => onColorPointerDown(event, swatchColor)}
       />)}
-      <label className="swatch swatch--picker" aria-label="Choose a custom color">＋<input type="color" value={color} onChange={(event) => onCustomColor(event.target.value)} /></label>
+      <label className="swatch swatch--picker" aria-label="Choose a custom color"><ToolIcon name="plus" size={18} /><input type="color" value={color} onChange={(event) => onCustomColor(event.target.value)} /></label>
     </div>
   </footer>;
 }
