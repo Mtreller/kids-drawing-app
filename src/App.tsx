@@ -26,6 +26,7 @@ import { ToolDock, TopBar, type PanelName } from './components/Toolbars';
 import { CanvasWorkspace } from './components/CanvasWorkspace';
 import { FloatingPanels } from './components/FloatingPanels';
 import { useColorDropGesture, type DragColor } from './hooks/useColorDropGesture';
+import { TOUCH_TAP_MOVE_PX, createTouchTapTracker, isTouchLikePointer, isUiTouchTarget } from './touchTap';
 
 type PageBase = { bitmap: string | Blob; width: number; height: number };
 type BrushCursor = { x: number; y: number } | null;
@@ -51,11 +52,20 @@ export function App() {
   const visibleRef = useRef<HTMLCanvasElement>(null);
   const backingRef = useRef<HTMLCanvasElement | null>(null);
   const clusterRef = useRef<HTMLDivElement>(null);
+  const canvasStageRef = useRef<HTMLDivElement | null>(null);
+  const [canvasStage, setCanvasStage] = useState<HTMLDivElement | null>(null);
+  const bindCanvasStage = useCallback((node: HTMLDivElement | null) => {
+    canvasStageRef.current = node;
+    setCanvasStage((current) => current === node ? current : node);
+  }, []);
   const sizeControlRef = useRef<HTMLElement>(null);
   const opacityControlRef = useRef<HTMLElement>(null);
   const fileRef = useRef<HTMLInputElement>(null);
   const pointers = useRef(new Map<number, Point>());
-  const screenPointers = useRef(new Map<number, Point>());
+  const screenPointers = useRef(new Map<number, Point & { startX: number; startY: number }>());
+  const undoActionRef = useRef<() => void>(() => {});
+  const redoActionRef = useRef<() => void>(() => {});
+  const notifyRef = useRef<(text: string) => void>(() => {});
   const viewPointerOnCanvas = useRef(new Map<number, boolean>());
   const lastPoint = useRef<Point | null>(null);
   const strokeStarted = useRef(false);
@@ -502,6 +512,7 @@ export function App() {
     setMessage(text);
     window.setTimeout(() => setMessage('Choose a tool and start creating!'), 2400);
   };
+  notifyRef.current = notify;
 
   const beginDrawing = () => {
     if (hideTimer.current) window.clearTimeout(hideTimer.current);
@@ -735,8 +746,40 @@ export function App() {
     setMessage('Release to fill the highlighted section');
   };
 
+  const screenPointerPoints = () => new Map([...screenPointers.current].map(([id, point]) => [id, { x: point.x, y: point.y }]));
+
+  const screenPointersMoved = () => {
+    for (const point of screenPointers.current.values()) {
+      if (Math.hypot(point.x - point.startX, point.y - point.startY) > TOUCH_TAP_MOVE_PX) return true;
+    }
+    return false;
+  };
+
+  const shouldNavigateCanvas = () => {
+    const startedOutsideCanvas = [...viewPointerOnCanvas.current.values()].some((inside) => !inside);
+    return tool !== 'move' || !selectedId || startedOutsideCanvas;
+  };
+
+  const beginMultiTouchSession = () => {
+    if (screenPointers.current.size < 2) return;
+    if (!multiTouch.current) {
+      multiTouch.current = {
+        startedAt: Date.now(),
+        maxPointers: screenPointers.current.size,
+        moved: false,
+        initial: screenPointerPoints(),
+      };
+      lastPoint.current = null;
+      fillTap.current = null;
+      fillTapMoved.current = true;
+      setBrushCursor(null);
+    } else {
+      multiTouch.current.maxPointers = Math.max(multiTouch.current.maxPointers, screenPointers.current.size);
+    }
+  };
+
   const startCanvasNavigation = () => {
-    if (screenPointers.current.size < 2 || navigatingCanvas.current) return;
+    if (screenPointers.current.size < 2 || navigatingCanvas.current || !shouldNavigateCanvas()) return;
     if (strokeStarted.current) pushHistory();
     activeRegionMaskRef.current = null;
     const [a, b] = [...screenPointers.current.values()];
@@ -753,31 +796,49 @@ export function App() {
     fillTap.current = null;
     fillTapMoved.current = true;
     navigatingCanvas.current = true;
-    multiTouch.current = {
-      startedAt: Date.now(),
-      maxPointers: screenPointers.current.size,
-      moved: false,
-      initial: new Map(screenPointers.current),
-    };
+    beginMultiTouchSession();
+    if (multiTouch.current) multiTouch.current.moved = true;
     setBrushCursor(null);
     setMessage('Pinch, drag or twist anywhere around the canvas');
   };
 
+  const finishCanvasNavigation = (announce = true) => {
+    if (!navigatingCanvas.current && !multiTouch.current) return;
+    const didMove = Boolean(multiTouch.current?.moved || navigatingCanvas.current);
+    multiTouch.current = null;
+    navigatingCanvas.current = false;
+    viewGesture.current = null;
+    pointers.current.clear();
+    lastPoint.current = null;
+    strokeStarted.current = false;
+    fillTap.current = null;
+    fillTapMoved.current = false;
+    activeRegionMaskRef.current = null;
+    if (announce && didMove) notify(`Canvas ${Math.round(zoom * 100)}% • ${Math.round(canvasRotation * 180 / Math.PI)}°`);
+    endDrawing();
+  };
+
   const stagePointerDown = (event: React.PointerEvent<HTMLDivElement>) => {
-    if (event.pointerType !== 'touch') return;
-    screenPointers.current.set(event.pointerId, { x: event.clientX, y: event.clientY });
+    if (!isTouchLikePointer(event)) return;
+    if (isUiTouchTarget(event.target)) return;
+    screenPointers.current.set(event.pointerId, {
+      x: event.clientX,
+      y: event.clientY,
+      startX: event.clientX,
+      startY: event.clientY,
+    });
     viewPointerOnCanvas.current.set(event.pointerId, Boolean((event.target as Element | null)?.closest('.canvas-wrap')));
     try { event.currentTarget.setPointerCapture(event.pointerId); } catch { /* Continue tracking through bubbling when capture is unavailable. */ }
-    const startedOutsideCanvas = [...viewPointerOnCanvas.current.values()].some((inside) => !inside);
-    if (screenPointers.current.size === 2 && (tool !== 'move' || !selectedId || startedOutsideCanvas)) startCanvasNavigation();
-    if (screenPointers.current.size > 2 && multiTouch.current) multiTouch.current.maxPointers = screenPointers.current.size;
+    if (screenPointers.current.size >= 2) beginMultiTouchSession();
   };
 
   const stagePointerMove = (event: React.PointerEvent<HTMLDivElement>) => {
-    if (!screenPointers.current.has(event.pointerId)) return;
-    screenPointers.current.set(event.pointerId, { x: event.clientX, y: event.clientY });
-    if (!navigatingCanvas.current || screenPointers.current.size < 2) return;
-    event.preventDefault();
+    const current = screenPointers.current.get(event.pointerId);
+    if (!current) return;
+    current.x = event.clientX;
+    current.y = event.clientY;
+    if (screenPointers.current.size < 2) return;
+    beginMultiTouchSession();
     const [a, b] = [...screenPointers.current.values()];
     const distance = Math.max(1, Math.hypot(b.x - a.x, b.y - a.y));
     const angle = Math.atan2(b.y - a.y, b.x - a.x);
@@ -788,12 +849,20 @@ export function App() {
       if (initial.length >= 2) {
         const [initialA, initialB] = initial;
         const initialDistance = Math.hypot(initialB.x - initialA.x, initialB.y - initialA.y);
-        const initialAngle = Math.atan2(initialB.y - initialA.y, initialB.x - initialA.x);
         const initialCenter = { x: (initialA.x + initialB.x) / 2, y: (initialA.y + initialB.y) / 2 };
-        if (Math.abs(distance - initialDistance) > 8 || Math.abs(angle - initialAngle) > .05 || Math.hypot(center.x - initialCenter.x, center.y - initialCenter.y) > 8) multiTouch.current.moved = true;
+        if (
+          screenPointersMoved()
+          || Math.abs(distance - initialDistance) > TOUCH_TAP_MOVE_PX
+          || Math.hypot(center.x - initialCenter.x, center.y - initialCenter.y) > TOUCH_TAP_MOVE_PX
+        ) multiTouch.current.moved = true;
       }
     }
+    if (!navigatingCanvas.current) {
+      if (!multiTouch.current?.moved) return;
+      startCanvasNavigation();
+    }
     if (!viewGesture.current) return;
+    event.preventDefault();
     const nextZoom = Math.max(1, Math.min(4, viewGesture.current.zoom * distance / viewGesture.current.distance));
     setZoom(nextZoom);
     setCanvasRotation(normalizeRotation(viewGesture.current.rotation + angle - viewGesture.current.angle));
@@ -804,38 +873,31 @@ export function App() {
   };
 
   const stagePointerUp = (event: React.PointerEvent<HTMLDivElement>) => {
-    if (event.pointerType !== 'touch' || !screenPointers.current.has(event.pointerId)) return;
+    if (!screenPointers.current.has(event.pointerId)) return;
     screenPointers.current.delete(event.pointerId);
     viewPointerOnCanvas.current.delete(event.pointerId);
-    if (screenPointers.current.size < 2) viewGesture.current = null;
-    if (screenPointers.current.size || !navigatingCanvas.current) return;
-    const touchGesture = multiTouch.current;
-    const isQuickTap = touchGesture && !touchGesture.moved && Date.now() - touchGesture.startedAt < 320;
-    multiTouch.current = null;
-    navigatingCanvas.current = false;
-    pointers.current.clear();
-    lastPoint.current = null;
-    strokeStarted.current = false;
-    fillTap.current = null;
-    fillTapMoved.current = false;
-    activeRegionMaskRef.current = null;
-    if (isQuickTap && touchGesture.maxPointers >= 3) {
-      redo();
-      notify('Redo');
-    } else if (isQuickTap && touchGesture.maxPointers === 2) {
-      undo();
-      notify('Undo');
-    } else {
-      notify(`Canvas ${Math.round(zoom * 100)}% • ${Math.round(canvasRotation * 180 / Math.PI)}°`);
+    if (screenPointers.current.size >= 2 && navigatingCanvas.current) {
+      const [a, b] = [...screenPointers.current.values()];
+      viewGesture.current = {
+        distance: Math.max(1, Math.hypot(b.x - a.x, b.y - a.y)),
+        angle: Math.atan2(b.y - a.y, b.x - a.x),
+        center: { x: (a.x + b.x) / 2, y: (a.y + b.y) / 2 },
+        zoom,
+        pan: { ...pan },
+        rotation: canvasRotation,
+      };
+      return;
     }
-    endDrawing();
+    if (screenPointers.current.size < 2) viewGesture.current = null;
+    if (screenPointers.current.size) return;
+    finishCanvasNavigation();
   };
 
   const pointerDown = (event: React.PointerEvent<HTMLCanvasElement>) => {
     const canvas = event.currentTarget;
     canvas.setPointerCapture(event.pointerId);
     if (event.pointerType === 'mouse' && event.button === 2) return;
-    if (navigatingCanvas.current) return;
+    if (navigatingCanvas.current || (multiTouch.current && tool !== 'move')) return;
     const point = pointFromClient(canvas, event.clientX, event.clientY)!;
     if (tool === 'brush' || tool === 'eraser') setBrushCursor(point);
     pointers.current.set(event.pointerId, point);
@@ -914,7 +976,7 @@ export function App() {
   const pointerMove = (event: React.PointerEvent<HTMLCanvasElement>) => {
     const point = pointFromClient(event.currentTarget, event.clientX, event.clientY)!;
     if (tool === 'brush' || tool === 'eraser') setBrushCursor(point);
-    if (navigatingCanvas.current) return;
+    if (navigatingCanvas.current || (multiTouch.current && tool !== 'move')) return;
     if (!pointers.current.has(event.pointerId)) return;
     pointers.current.set(event.pointerId, point);
 
@@ -994,8 +1056,8 @@ export function App() {
     const hadMultiplePointers = screenPointers.current.size > 1;
     const releasedPoint = pointers.current.get(event.pointerId) ?? null;
     pointers.current.delete(event.pointerId);
-    if (navigatingCanvas.current) {
-      if (event.pointerType === 'touch') setBrushCursor(null);
+    if (navigatingCanvas.current || multiTouch.current) {
+      if (isTouchLikePointer(event)) setBrushCursor(null);
       return;
     }
     if (mousePan.current) {
@@ -1050,6 +1112,8 @@ export function App() {
     refreshHistoryState();
     haptic([7, 25, 7]);
   };
+  undoActionRef.current = () => { void undo(); };
+  redoActionRef.current = () => { void redo(); };
 
   const addObject = (kind: ArtObject['kind'], sticker?: string) => {
     const object = newObject(kind, color, sticker, canvasSize.width, canvasSize.height);
@@ -1434,6 +1498,69 @@ export function App() {
     };
   });
 
+  useEffect(() => {
+    const stage = canvasStage;
+    if (!stage) return;
+    const tracker = createTouchTapTracker();
+    let ignoring = false;
+
+    const onStart = (event: TouchEvent) => {
+      if (ignoring) return;
+      if (isUiTouchTarget(event.target) && tracker.maxFingers === 0) {
+        ignoring = true;
+        return;
+      }
+      if (event.touches.length >= 2) event.preventDefault();
+      tracker.onStart(event);
+    };
+    const onMove = (event: TouchEvent) => {
+      if (ignoring) return;
+      tracker.onMove(event);
+      if (event.touches.length >= 2 || tracker.maxFingers >= 2) event.preventDefault();
+    };
+    const onEnd = (event: TouchEvent) => {
+      if (ignoring) {
+        if (event.touches.length === 0) {
+          ignoring = false;
+          tracker.reset();
+        }
+        return;
+      }
+      const action = tracker.onEnd(event);
+      if (event.touches.length > 0 || !action) return;
+      screenPointers.current.clear();
+      viewPointerOnCanvas.current.clear();
+      navigatingCanvas.current = false;
+      multiTouch.current = null;
+      viewGesture.current = null;
+      pointers.current.clear();
+      lastPoint.current = null;
+      strokeStarted.current = false;
+      fillTap.current = null;
+      fillTapMoved.current = false;
+      if (action === 'undo') {
+        undoActionRef.current();
+        notifyRef.current('Undo');
+      } else {
+        redoActionRef.current();
+        notifyRef.current('Redo');
+      }
+    };
+
+    stage.dataset.touchTap = 'ready';
+    stage.addEventListener('touchstart', onStart, { passive: false, capture: true });
+    stage.addEventListener('touchmove', onMove, { passive: false, capture: true });
+    stage.addEventListener('touchend', onEnd, { capture: true });
+    stage.addEventListener('touchcancel', onEnd, { capture: true });
+    return () => {
+      delete stage.dataset.touchTap;
+      stage.removeEventListener('touchstart', onStart, true);
+      stage.removeEventListener('touchmove', onMove, true);
+      stage.removeEventListener('touchend', onEnd, true);
+      stage.removeEventListener('touchcancel', onEnd, true);
+    };
+  }, [canvasStage]);
+
   const startColorDrag = useColorDropGesture({
     canvasRef: visibleRef,
     pointFromClient,
@@ -1488,6 +1615,7 @@ export function App() {
         onStagePointerUp={stagePointerUp}
         onStagePointerCancel={stagePointerUp}
         clusterRef={clusterRef}
+        stageRef={bindCanvasStage}
         sizeControlRef={sizeControlRef}
         opacityControlRef={opacityControlRef}
         brushSize={brushSize}

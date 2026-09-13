@@ -1,4 +1,4 @@
-import type { CSSProperties, PointerEventHandler, RefObject, WheelEventHandler } from 'react';
+import type { CSSProperties, PointerEventHandler, Ref, RefObject, WheelEventHandler } from 'react';
 import { useEffect, useState } from 'react';
 import type { ArtObject, Point, Tool } from '../drawing';
 import { ToolIcon } from '../icons';
@@ -10,7 +10,7 @@ export function CanvasWorkspace({
   message, stayInLines, selectedObject, canvasRotation, zoom,
   onRotateSelected, onDeleteSelected, onRotateCanvas, onResetCanvasRotation, onResetView,
   onWheel, onStagePointerDown, onStagePointerMove, onStagePointerUp, onStagePointerCancel,
-  clusterRef, sizeControlRef, opacityControlRef, brushSize, brushMinimum, brushMaximum, opacity, onBrushSize, onOpacity, onOpenBrush,
+  clusterRef, stageRef, sizeControlRef, opacityControlRef, brushSize, brushMinimum, brushMaximum, opacity, onBrushSize, onOpacity, onOpenBrush,
   drawingActive, canvasSize, displaySize, pan, visibleRef, fillPreviewRef, fillPreviewActive, tool, brushCursor,
   onCanvasPointerDown, onCanvasPointerMove, onCanvasPointerUp, onCanvasPointerCancel,
   onCanvasPointerEnter, onCanvasPointerLeave,
@@ -31,6 +31,7 @@ export function CanvasWorkspace({
   onStagePointerUp: PointerEventHandler<HTMLDivElement>;
   onStagePointerCancel: PointerEventHandler<HTMLDivElement>;
   clusterRef: RefObject<HTMLDivElement>;
+  stageRef: Ref<HTMLDivElement>;
   sizeControlRef: RefObject<HTMLElement>;
   opacityControlRef: RefObject<HTMLElement>;
   brushSize: number;
@@ -82,11 +83,12 @@ export function CanvasWorkspace({
       </div>
     </div>
     <div
+      ref={stageRef}
       className="canvas-stage"
       onPointerDownCapture={onStagePointerDown}
       onPointerMoveCapture={onStagePointerMove}
-      onPointerUp={onStagePointerUp}
-      onPointerCancel={onStagePointerCancel}
+      onPointerUpCapture={onStagePointerUp}
+      onPointerCancelCapture={onStagePointerCancel}
     >
       <div className="canvas-cluster" ref={clusterRef}>
         <aside className={`side-controls${sizeOpen ? ' is-open' : ' is-collapsed'}`} ref={sizeControlRef} aria-label="Brush size">
