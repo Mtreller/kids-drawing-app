@@ -589,6 +589,7 @@ export function App() {
     setColor(nextColor);
     if (!isMagicBrush(brushTypeRef.current)) return;
     setBrushType(lastSolidBrushRef.current);
+    setMessage('Color selected');
   };
 
   const drawLine = (from: Point, to: Point, pointerType = 'touch', pressure = 1) => {
