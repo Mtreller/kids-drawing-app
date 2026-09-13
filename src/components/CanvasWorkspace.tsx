@@ -1,4 +1,4 @@
-import type { CSSProperties, PointerEventHandler, RefObject, WheelEventHandler } from 'react';
+import type { CSSProperties, PointerEventHandler, Ref, RefObject, WheelEventHandler } from 'react';
 import { useEffect, useState } from 'react';
 import type { ArtObject, Point, Tool } from '../drawing';
 import { ToolIcon } from '../icons';
@@ -31,7 +31,7 @@ export function CanvasWorkspace({
   onStagePointerUp: PointerEventHandler<HTMLDivElement>;
   onStagePointerCancel: PointerEventHandler<HTMLDivElement>;
   clusterRef: RefObject<HTMLDivElement>;
-  stageRef: RefObject<HTMLDivElement>;
+  stageRef: Ref<HTMLDivElement>;
   sizeControlRef: RefObject<HTMLElement>;
   opacityControlRef: RefObject<HTMLElement>;
   brushSize: number;

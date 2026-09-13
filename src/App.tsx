@@ -52,7 +52,12 @@ export function App() {
   const visibleRef = useRef<HTMLCanvasElement>(null);
   const backingRef = useRef<HTMLCanvasElement | null>(null);
   const clusterRef = useRef<HTMLDivElement>(null);
-  const canvasStageRef = useRef<HTMLDivElement>(null);
+  const canvasStageRef = useRef<HTMLDivElement | null>(null);
+  const [canvasStage, setCanvasStage] = useState<HTMLDivElement | null>(null);
+  const bindCanvasStage = useCallback((node: HTMLDivElement | null) => {
+    canvasStageRef.current = node;
+    setCanvasStage((current) => current === node ? current : node);
+  }, []);
   const sizeControlRef = useRef<HTMLElement>(null);
   const opacityControlRef = useRef<HTMLElement>(null);
   const fileRef = useRef<HTMLInputElement>(null);
@@ -1494,7 +1499,7 @@ export function App() {
   });
 
   useEffect(() => {
-    const stage = canvasStageRef.current;
+    const stage = canvasStage;
     if (!stage) return;
     const tracker = createTouchTapTracker();
     let ignoring = false;
@@ -1542,17 +1547,19 @@ export function App() {
       }
     };
 
+    stage.dataset.touchTap = 'ready';
     stage.addEventListener('touchstart', onStart, { passive: false, capture: true });
     stage.addEventListener('touchmove', onMove, { passive: false, capture: true });
     stage.addEventListener('touchend', onEnd, { capture: true });
     stage.addEventListener('touchcancel', onEnd, { capture: true });
     return () => {
+      delete stage.dataset.touchTap;
       stage.removeEventListener('touchstart', onStart, true);
       stage.removeEventListener('touchmove', onMove, true);
       stage.removeEventListener('touchend', onEnd, true);
       stage.removeEventListener('touchcancel', onEnd, true);
     };
-  }, []);
+  }, [canvasStage]);
 
   const startColorDrag = useColorDropGesture({
     canvasRef: visibleRef,
@@ -1608,7 +1615,7 @@ export function App() {
         onStagePointerUp={stagePointerUp}
         onStagePointerCancel={stagePointerUp}
         clusterRef={clusterRef}
-        stageRef={canvasStageRef}
+        stageRef={bindCanvasStage}
         sizeControlRef={sizeControlRef}
         opacityControlRef={opacityControlRef}
         brushSize={brushSize}
