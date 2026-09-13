@@ -1,4 +1,8 @@
 :root {
+  --safe-top: env(safe-area-inset-top, 0px);
+  --safe-right: env(safe-area-inset-right, 0px);
+  --safe-bottom: env(safe-area-inset-bottom, 0px);
+  --safe-left: env(safe-area-inset-left, 0px);
   font-family: Inter, ui-rounded, "SF Pro Rounded", system-ui, sans-serif;
   color: #25213b;
   background: #eee9f7;
@@ -6,18 +10,28 @@
   text-rendering: optimizeLegibility;
 }
 
+@supports (-webkit-touch-callout: none) {
+  @media (display-mode: standalone), (display-mode: fullscreen) {
+    :root { --safe-top: max(env(safe-area-inset-top, 0px), 59px); }
+  }
+  html:fullscreen, html:-webkit-full-screen {
+    --safe-top: max(env(safe-area-inset-top, 0px), 59px);
+  }
+}
+
 * { box-sizing: border-box; }
 html, body, #root { width: 100%; min-height: 100%; overscroll-behavior: none; }
 body { margin: 0; overflow: hidden; }
 button { border: 0; color: inherit; font: inherit; touch-action: manipulation; -webkit-tap-highlight-color: transparent; }
 html:fullscreen, html:-webkit-full-screen, html:fullscreen body, html:-webkit-full-screen body, html:fullscreen #root, html:-webkit-full-screen #root { width: 100%; height: 100%; }
-html:fullscreen .app-shell, html:-webkit-full-screen .app-shell { width: 100%; height: 100%; min-height: 100%; --bar-height: 52px; --palette-offset: 64px; }
-body.ios-focus-fallback { overflow-y: auto; -webkit-overflow-scrolling: touch; }
+html:fullscreen .app-shell, html:-webkit-full-screen .app-shell { width: 100%; height: 100%; min-height: 100%; --bar-content: 56px; --palette-offset: 64px; }
+body.ios-focus-fallback { overflow-y: auto; -webkit-overflow-scrolling: touch; --safe-top: max(env(safe-area-inset-top, 0px), 59px); }
 body.ios-focus-fallback::after { content: ''; display: block; height: 2px; }
 body.ios-focus-fallback .app-shell { position: sticky; top: 0; }
 
 .app-shell {
-  --bar-height: 70px;
+  --bar-content: 70px;
+  --bar-height: calc(var(--bar-content) + var(--safe-top));
   --palette-offset: 72px;
   height: 100dvh;
   min-height: 0;
@@ -29,10 +43,11 @@ body.ios-focus-fallback .app-shell { position: sticky; top: 0; }
 
 .topbar {
   z-index: 5;
+  height: 100%;
   display: flex;
   align-items: center;
   justify-content: space-between;
-  padding: max(10px, env(safe-area-inset-top)) max(16px, env(safe-area-inset-right)) 10px max(16px, env(safe-area-inset-left));
+  padding: calc(10px + var(--safe-top)) max(16px, var(--safe-right)) 10px max(16px, var(--safe-left));
   border-bottom: 1px solid #e4deed;
   background: rgb(255 255 255 / 86%);
   backdrop-filter: blur(20px);
@@ -162,7 +177,11 @@ body.ios-focus-fallback .app-shell { position: sticky; top: 0; }
 .view-controls button span { font-size: 8px; }
 .view-controls .rotation-reset { min-width: 42px; color: #6d6578; font-size: 10px; background: transparent; }
 .view-controls .zoom-reset { min-width: 58px; color: white; font-size: 10px; background: #755cff; }
-.app-shell.is-focus { --bar-height: 56px; grid-template-rows: var(--bar-height) minmax(0, 1fr) auto; }
+.app-shell.is-focus { --bar-content: 56px; }
+
+@supports (-webkit-touch-callout: none) {
+  .app-shell.is-focus { --safe-top: max(env(safe-area-inset-top, 0px), 59px); }
+}
 .app-shell.is-focus .palette { visibility: visible; opacity: 1; pointer-events: auto; }
 html:fullscreen .app-shell .side-controls,
 html:-webkit-full-screen .app-shell .side-controls,
@@ -523,8 +542,8 @@ html:-webkit-full-screen .app-shell .workspace-hud {
 .icon-button:disabled { opacity: .35; cursor: default; }
 
 @media (max-width: 680px) {
-  .app-shell { --bar-height: 56px; --dock-offset: 62px; --palette-offset: 128px; }
-  .topbar { padding: max(8px, env(safe-area-inset-top)) max(10px, env(safe-area-inset-right)) 8px max(10px, env(safe-area-inset-left)); }
+  .app-shell { --bar-content: 60px; --dock-offset: 62px; --palette-offset: 128px; }
+  .topbar { padding: calc(8px + var(--safe-top)) max(10px, var(--safe-right)) 8px max(10px, var(--safe-left)); }
   .brand > span:last-child { display: none; }
   .gallery-button, .library-button, .profile-button { width: 44px; min-width: 44px; padding: 0; }
   .gallery-button b, .library-button b, .profile-button b { display: none; }
@@ -690,8 +709,8 @@ html:-webkit-full-screen .app-shell .workspace-hud {
 }
 
 @media (max-height: 600px) and (orientation: landscape) {
-  .app-shell { --bar-height: 42px; grid-template-rows: var(--bar-height) minmax(0, 1fr) 0; }
-  .topbar { padding: max(4px, env(safe-area-inset-top)) max(6px, env(safe-area-inset-right)) 4px max(6px, env(safe-area-inset-left)); }
+  .app-shell { --bar-content: 42px; grid-template-rows: var(--bar-height) minmax(0, 1fr) 0; }
+  .topbar { padding: calc(4px + var(--safe-top)) max(6px, var(--safe-right)) 4px max(6px, var(--safe-left)); }
   .brand { gap: 0; }
   .brand > span:last-child { display: none; }
   .brand__mark { width: 30px; height: 30px; border-radius: 10px; }
@@ -700,11 +719,11 @@ html:-webkit-full-screen .app-shell .workspace-hud {
   .topbar .gallery-button b, .topbar .library-button b, .topbar .profile-button b { display: none; }
   .workspace, .app-shell.is-focus .workspace, .app-shell.is-left-handed .workspace, .app-shell.is-left-handed.is-focus .workspace { grid-template-rows: minmax(0, 1fr); gap: 0; padding: 3px 96px 3px 8px; }
   .workspace-hud { position: fixed; z-index: 8; top: 0; left: 0; width: 0; height: 0; min-height: 0; overflow: visible; }
-  .status-pill { position: fixed; top: 7px; left: max(62px, calc(env(safe-area-inset-left) + 62px)); width: 130px; min-width: 0; display: block; padding: 6px 8px; font-size: 8px; background: rgb(245 242 250 / 90%); }
-  .line-mode-badge { position: fixed; top: 6px; left: max(44px, calc(env(safe-area-inset-left) + 44px)); padding: 5px 7px; }
+  .status-pill { position: fixed; top: max(7px, calc(var(--safe-top) + 6px)); left: max(62px, calc(var(--safe-left) + 62px)); width: 130px; min-width: 0; display: block; padding: 6px 8px; font-size: 8px; background: rgb(245 242 250 / 90%); }
+  .line-mode-badge { position: fixed; top: max(6px, calc(var(--safe-top) + 6px)); left: max(44px, calc(var(--safe-left) + 44px)); padding: 5px 7px; }
   .line-mode-badge span, .selection-toolbar > span { display: none; }
   .selection-toolbar { position: fixed; bottom: 6px; left: max(62px, calc(env(safe-area-inset-left) + 62px)); padding-left: 5px; }
-  .view-controls { position: fixed; top: 4px; left: 50%; margin: 0; padding: 2px; transform: translateX(-50%); pointer-events: auto; }
+  .view-controls { position: fixed; top: max(4px, calc(var(--safe-top) + 4px)); left: 50%; margin: 0; padding: 2px; transform: translateX(-50%); pointer-events: auto; }
   .view-controls button { min-width: 28px; height: 30px; padding: 0 5px; }
   .view-controls .rotation-reset { min-width: 34px; }
   .view-controls .zoom-reset { min-width: 47px; }
