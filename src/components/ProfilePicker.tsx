@@ -2,6 +2,7 @@ import { useState } from 'react';
 import { ToolIcon } from '../icons';
 import type { CloudStatus } from '../cloud';
 import { PROFILE_AVATARS, type Profile, type StorageKind } from '../storage';
+import { InstallHelper } from './InstallHelper';
 
 export function ProfilePicker({
   profiles,
@@ -108,6 +109,7 @@ export function ProfilePicker({
           </button>
         </div>
       </>}
+      <InstallHelper />
       <FamilyCloudCard
         houseCode={houseCode}
         houseShareUrl={houseShareUrl}

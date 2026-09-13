@@ -2,6 +2,7 @@ import { useEffect, useState } from 'react';
 import { bitmapSource } from '../history';
 import { ToolIcon } from '../icons';
 import type { DrawingSummary, Profile } from '../storage';
+import { InstallHelper } from './InstallHelper';
 
 const previewPages = [
   `${import.meta.env.BASE_URL}drawings/kpop/stage-dance.webp`,
@@ -103,6 +104,7 @@ export function StartChooser({
           </span>
         </button>}
       </div>
+      <InstallHelper />
     </div>
   </div>;
 }

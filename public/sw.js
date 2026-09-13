@@ -1,4 +1,4 @@
-const CACHE = 'color-pop-v2-2026-09-13-undo';
+const CACHE = 'color-pop-v2-2026-09-13-home';
 const BASE = '/kids-drawing-app/';
 const CORE = [
   BASE,

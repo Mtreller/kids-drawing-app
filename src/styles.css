@@ -476,6 +476,75 @@ html:-webkit-full-screen .app-shell .workspace-hud {
 .profile-house__actions .profile-secondary { min-height: 40px; padding: 0 12px; font-size: 13px; }
 .profile-house__join { display: grid; gap: 10px; }
 .profile-house__error { margin: 0; color: #b42318; font-size: 13px; font-weight: 800; }
+.install-help {
+  margin-top: 22px;
+  padding: 16px;
+  border: 1px solid #e4ddec;
+  border-radius: 22px;
+  background: linear-gradient(180deg, #f4efff, #fff);
+  display: grid;
+  gap: 10px;
+}
+.install-help__row {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 12px;
+}
+.install-help__label { margin: 0; color: #755cff; font-size: 11px; font-weight: 800; letter-spacing: .06em; text-transform: uppercase; }
+.install-help__title { margin: 4px 0 0; font-size: 20px; letter-spacing: -.03em; }
+.install-help__lead { margin: 0; color: #665e74; font-size: 13px; font-weight: 700; line-height: 1.45; }
+.install-help__close {
+  flex: none;
+  width: 32px;
+  height: 32px;
+  display: grid;
+  place-items: center;
+  border-radius: 50%;
+  color: #645b72;
+  background: #eee9f5;
+}
+.install-help__steps {
+  margin: 0;
+  padding: 0;
+  display: grid;
+  gap: 8px;
+  list-style: none;
+}
+.install-help__steps li {
+  display: grid;
+  grid-template-columns: 28px 1fr;
+  align-items: start;
+  gap: 10px;
+  color: #3f3650;
+  font-size: 14px;
+  font-weight: 750;
+  line-height: 1.4;
+}
+.install-help__steps span {
+  display: grid;
+  place-items: center;
+  width: 28px;
+  height: 28px;
+  border-radius: 50%;
+  color: white;
+  font-size: 13px;
+  font-weight: 850;
+  background: #755cff;
+}
+.install-help__actions { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; }
+.install-help__actions .profile-primary, .install-help__actions .profile-secondary { min-height: 40px; padding: 0 12px; font-size: 13px; }
+.install-help__mute {
+  min-height: 40px;
+  padding: 0 4px;
+  color: #81798c;
+  font-size: 13px;
+  font-weight: 800;
+  background: transparent;
+  cursor: pointer;
+  text-decoration: underline;
+  text-underline-offset: 3px;
+}
 .library-tabs { display: flex; gap: 8px; margin: 16px 0 18px; }
 .library-tabs button {
   min-height: 40px;
