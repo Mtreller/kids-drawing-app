@@ -26,6 +26,10 @@ export const brushPresets: BrushPreset[] = [
   { id: 'neon', name: 'Neon', icon: '⚡', group: 'Magic', description: 'Bright glowing light' },
 ];
 
+export function isMagicBrush(type: BrushType) {
+  return brushPresets.find((brush) => brush.id === type)?.group === 'Magic';
+}
+
 type StrokeOptions = {
   from: Point;
   to: Point;

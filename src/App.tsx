@@ -11,7 +11,7 @@ import {
   saveDrawing, saveProfile, setActiveProfileId, syncFromCloud, type DrawingSummary, type Profile,
   type SavedDrawing, type StorageKind,
 } from './storage';
-import { brushPresets, drawBrushStroke, type BrushType } from './brushes';
+import { brushPresets, drawBrushStroke, isMagicBrush, type BrushType } from './brushes';
 import { copyCanvas, createRegionMaskCache, getRegionMask, restoreBaseLine, type RegionMaskCache } from './regionMask';
 import { bitmapSource, canvasToJpegBlob, canvasToPngBlob, scaledCanvas, trimHistory } from './history';
 import {
@@ -103,6 +103,8 @@ export function App() {
   const [flow, setFlow] = useState(.8);
   const [smoothing, setSmoothing] = useState(.35);
   const [brushType, setBrushType] = useState<BrushType>('round');
+  const brushTypeRef = useRef<BrushType>('round');
+  const lastSolidBrushRef = useRef<BrushType>('round');
   const [stayInLines, setStayInLines] = useState(true);
   const [tolerance, setTolerance] = useState(32);
   const [objects, setObjects] = useState<ArtObject[]>([]);
@@ -140,6 +142,7 @@ export function App() {
 
   useEffect(() => { objectsRef.current = objects; }, [objects]);
   useEffect(() => { profileRef.current = activeProfile; }, [activeProfile]);
+  useEffect(() => { brushTypeRef.current = brushType; }, [brushType]);
   useEffect(() => {
     try { window.localStorage.setItem('color-pop-left-handed', String(leftHanded)); }
     catch { /* Settings still work for this session when storage is unavailable. */ }
@@ -149,7 +152,10 @@ export function App() {
       const saved = JSON.parse(window.localStorage.getItem('color-pop-brush') ?? '{}') as { flow?: number; smoothing?: number; stayInLines?: boolean; brushType?: BrushType };
       if (typeof saved.flow === 'number') setFlow(saved.flow);
       if (typeof saved.smoothing === 'number') setSmoothing(saved.smoothing);
-      if (saved.brushType && brushPresets.some((brush) => brush.id === saved.brushType)) setBrushType(saved.brushType);
+      if (saved.brushType && brushPresets.some((brush) => brush.id === saved.brushType)) {
+        setBrushType(saved.brushType);
+        if (!isMagicBrush(saved.brushType)) lastSolidBrushRef.current = saved.brushType;
+      }
       const saferDefaultApplied = window.localStorage.getItem('color-pop-stay-inside-default-v1') === 'true';
       if (saferDefaultApplied && typeof saved.stayInLines === 'boolean') setStayInLines(saved.stayInLines);
       else window.localStorage.setItem('color-pop-stay-inside-default-v1', 'true');
@@ -570,12 +576,19 @@ export function App() {
 
   const selectBrush = (nextBrush: BrushType) => {
     const preset = brushPresets.find((brush) => brush.id === nextBrush);
+    if (!isMagicBrush(nextBrush)) lastSolidBrushRef.current = nextBrush;
     setBrushType(nextBrush);
     setTool('brush');
     setDrawingActive(false);
     activeRegionMaskRef.current = null;
     haptic(7);
     setMessage(`${preset?.icon ?? '🖌️'} ${preset?.name ?? 'Brush'} selected`);
+  };
+
+  const selectColor = (nextColor: string) => {
+    setColor(nextColor);
+    if (!isMagicBrush(brushTypeRef.current)) return;
+    setBrushType(lastSolidBrushRef.current);
   };
 
   const drawLine = (from: Point, to: Point, pointerType = 'touch', pressure = 1) => {
@@ -1426,7 +1439,7 @@ export function App() {
     previewColorDrop,
     clearFillPreview,
     fillAt,
-    setColor,
+    setColor: selectColor,
     onSelectBrush: selectBrush,
     activateFillTool: () => setTool('fill'),
     closePanels: () => setPanel(null),
@@ -1593,7 +1606,7 @@ export function App() {
         onDeleteSaved={(id) => void removeDrawing(id)}
       />}
 
-      <Palette tool={tool} brushType={brushType} color={color} onBrush={selectBrush} onPalettePointerDown={startColorDrag} onCustomColor={setColor} />
+      <Palette tool={tool} brushType={brushType} color={color} onBrush={selectBrush} onPalettePointerDown={startColorDrag} onCustomColor={selectColor} />
       <input ref={fileRef} className="visually-hidden" type="file" accept="image/png,image/jpeg,image/webp" onChange={(event) => { const file = event.target.files?.[0]; if (file) upload(file); event.target.value = ''; }} />
       {dragColor && <div className={`color-drop-orb${fillPreviewActive ? ' is-over-target' : ''}`} style={{ left: dragColor.x, top: dragColor.y, backgroundColor: dragColor.color }} />}
     </main>
