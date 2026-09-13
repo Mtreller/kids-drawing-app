@@ -4,7 +4,7 @@ import { ToolIcon } from '../icons';
 import type { DrawingSummary, Profile } from '../storage';
 
 const previewPages = [
-  `${import.meta.env.BASE_URL}drawings/paw-patrol/skye-smiling.webp`,
+  `${import.meta.env.BASE_URL}drawings/kpop/stage-dance.webp`,
   `${import.meta.env.BASE_URL}drawings/unicorns-princesses/unicorn-hill.webp`,
   `${import.meta.env.BASE_URL}drawings/stitch/happy-stitch.webp`,
   `${import.meta.env.BASE_URL}drawings/paw-patrol/chase-standing-proudly.webp`,

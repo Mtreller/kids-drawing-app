@@ -32,6 +32,15 @@ const stitchPages = pages('stitch', [
   { title: 'Happy Stitch', file: 'happy-stitch.webp' },
 ]);
 
+const kpopPages = pages('kpop', [
+  { title: 'Concert Night', file: 'concert-night.webp' },
+  { title: 'Stage Dance', file: 'stage-dance.webp' },
+  { title: 'Demon Hunters', file: 'demon-hunters.webp' },
+  { title: 'Hunter Squad', file: 'hunter-squad.webp' },
+  { title: 'Ramen Break', file: 'ramen-break.webp' },
+  { title: 'Snack Time', file: 'snack-time.webp' },
+]);
+
 function DrawingGrid({ entries, className = '', onSelect }: {
   entries: DrawingPage[];
   className?: string;
@@ -80,6 +89,8 @@ export function DrawingLibrary({
         onSelect={onSelectSaved}
         onDelete={onDeleteSaved}
       /> : <>
+        <div className="category-heading category-heading--kpop"><span>🎤</span><div><h3>Kpop</h3><p>Six idol pages ready to color</p></div></div>
+        <DrawingGrid entries={kpopPages} className="drawing-grid--kpop" onSelect={onSelect} />
         <div className="category-heading"><span>🐾</span><div><h3>Paw Patrol</h3><p>Five adventures ready to color</p></div></div>
         <DrawingGrid entries={pawPatrolPages} onSelect={onSelect} />
         <div className="category-heading category-heading--magic"><span>🦄</span><div><h3>Unicorns &amp; Princesses</h3><p>Magical friends and underwater adventures</p></div></div>
