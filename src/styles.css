@@ -882,4 +882,65 @@ html:-webkit-full-screen .app-shell .workspace-hud {
   .brush-popover label { padding-block: 5px; }
 }
 
+/* ---------- Tablets in landscape: tool rail on the side, page fills the height ---------- */
+@media (min-width: 900px) and (min-height: 601px) and (orientation: landscape) {
+  .app-shell { --rail-space: calc(92px + var(--safe-left)); }
+  .app-shell.is-left-handed { --rail-space: calc(92px + var(--safe-right)); }
+  .workspace { padding: 10px 20px 12px var(--rail-space); }
+  .app-shell.is-left-handed .workspace { padding: 10px var(--rail-space) 12px 20px; }
+  .tool-dock, .app-shell.is-focus .tool-dock {
+    top: calc(var(--bar-height) + (100dvh - var(--bar-height) - var(--palette-offset)) / 2);
+    bottom: auto;
+    left: max(14px, var(--safe-left));
+    flex-direction: column;
+    max-width: none;
+    max-height: calc(100dvh - var(--bar-height) - var(--palette-offset) - 20px);
+    overflow-x: hidden;
+    overflow-y: auto;
+    transform: translateY(-50%);
+  }
+  .app-shell.is-left-handed .tool-dock { left: auto; right: max(14px, var(--safe-right)); }
+  .tool-dock .icon-button { min-width: 54px; width: 54px; height: 54px; border-radius: 17px; }
+  .tool-dock .icon-button svg { width: 28px; height: 28px; }
+  .tool-dock .reset-tool { margin: 4px 0 0; box-shadow: inset 0 1px 0 #eee5f1; }
+  .app-shell.is-drawing .tool-dock { transform: translate(-18px, -50%); }
+  .app-shell.is-left-handed.is-drawing .tool-dock { transform: translate(18px, -50%); }
+  .shapes-popover, .sticker-popover, .brush-popover {
+    left: calc(var(--rail-space) + 4px);
+    bottom: auto;
+    top: calc(var(--bar-height) + 12px);
+    transform: none;
+  }
+  .app-shell.is-left-handed .shapes-popover, .app-shell.is-left-handed .sticker-popover, .app-shell.is-left-handed .brush-popover { left: auto; right: calc(var(--rail-space) + 4px); }
+  .brush-popover { max-height: calc(100dvh - var(--bar-height) - var(--palette-offset) - 24px); }
+  .swatch, .magic-brush-button { width: 46px; height: 46px; }
+  .palette { padding-top: 9px; padding-bottom: max(9px, env(safe-area-inset-bottom)); }
+  .app-shell { --palette-offset: 66px; }
+}
+
+/* ---------- Tablets in portrait: bigger targets, slimmer side sliders ---------- */
+@media (min-width: 700px) and (min-height: 900px) and (orientation: portrait) {
+  .workspace { padding: 10px 14px 84px; }
+  .canvas-cluster { gap: 10px; }
+  .side-controls { flex-basis: 58px; width: 58px; padding-inline: 4px; }
+  .vertical-range-wrap { height: clamp(180px, 26vh, 300px); }
+  .side-controls input[type="range"] { width: clamp(180px, 26vh, 300px); }
+  .tool-dock { gap: 10px; padding: 10px; }
+  .tool-dock .icon-button { min-width: 54px; width: 54px; height: 54px; border-radius: 17px; }
+  .tool-dock .icon-button svg { width: 28px; height: 28px; }
+  .swatch, .magic-brush-button { width: 46px; height: 46px; }
+  .shapes-popover, .sticker-popover, .brush-popover { bottom: 160px; }
+}
+
+/* Fat thumbs on sliders for fingers on any touch screen. */
+@media (pointer: coarse) {
+  .polished-range::-webkit-slider-thumb { width: 28px; height: 28px; }
+  .polished-range { height: 10px; }
+  .actions-popover button { min-height: 50px; }
+}
+
+/* Never let a long press select text or pop up a callout while drawing. */
+.app-shell { -webkit-user-select: none; user-select: none; -webkit-touch-callout: none; }
+.app-shell input, .app-shell textarea { -webkit-user-select: text; user-select: text; }
+
 @media (prefers-reduced-motion: reduce) { * { scroll-behavior: auto !important; transition: none !important; } }

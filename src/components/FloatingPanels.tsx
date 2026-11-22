@@ -30,10 +30,10 @@ function BrushStrokePreview({ type, color, size, alpha }: { type: BrushType; col
 
 export function FloatingPanels({
   panel, brushType, color, brushSize, brushMinimum, brushMaximum, opacity, flow, smoothing,
-  stayInLines, tolerance, focusMode, leftHanded,
+  stayInLines, tolerance, focusMode, leftHanded, pencilOnly, penSeen,
   onClose, onSelectBrush, onToggleStayInLines, onBrushSize, onOpacity, onFlow, onSmoothing,
   onAddShape, onAddSticker, onUpload, onSave, onDownload, onResetPage, onClearArt, onToggleFocus,
-  onToggleHanded, onTolerance,
+  onToggleHanded, onTolerance, onTogglePencil,
 }: {
   panel: PanelName;
   brushType: BrushType;
@@ -48,6 +48,8 @@ export function FloatingPanels({
   tolerance: number;
   focusMode: boolean;
   leftHanded: boolean;
+  pencilOnly: boolean;
+  penSeen: boolean;
   onClose: () => void;
   onSelectBrush: (brush: BrushType) => void;
   onToggleStayInLines: () => void;
@@ -65,6 +67,7 @@ export function FloatingPanels({
   onToggleFocus: () => void;
   onToggleHanded: () => void;
   onTolerance: (value: number) => void;
+  onTogglePencil: () => void;
 }) {
   return <>
     {panel === 'brush' && <section className="popover brush-popover" role="dialog" aria-label="Brush settings">
@@ -111,8 +114,9 @@ export function FloatingPanels({
       <button type="button" onClick={onClearArt}><ToolIcon name="newCanvas" size={21} /> <span>New canvas</span></button>
       <button type="button" onClick={onToggleFocus}><ToolIcon name="focus" size={21} /> <span>{focusMode ? 'Exit focus mode' : 'Focus mode'}</span></button>
       <button type="button" onClick={onToggleHanded}><ToolIcon name="handedness" size={21} /> <span>{leftHanded ? 'Right-handed layout' : 'Left-handed layout'}</span></button>
+      <button type="button" aria-pressed={pencilOnly} onClick={onTogglePencil}><ToolIcon name="brush" size={21} /> <span>{pencilOnly ? 'Let fingers draw too' : penSeen ? 'Draw with Pencil only' : 'Stylus only (palm rest)'}</span></button>
       <label>Fill tolerance <b>{tolerance}</b><input type="range" min="5" max="80" value={tolerance} onChange={(event) => onTolerance(Number(event.target.value))} /></label>
-      <div className="input-hints"><span>✨ Stay Inside Lines locks paint to one section</span><span>🎨 Drag a color onto the drawing to fill</span><span>✌️ Pinch to zoom • twist to rotate</span><span>🖱 Ctrl-wheel zoom • Space-drag pan</span></div>
+      <div className="input-hints"><span>✨ Stay Inside Lines locks paint to one section</span><span>🎨 Drag a color onto the drawing to fill</span><span>✌️ Pinch to zoom • twist to rotate • 2-finger tap undo</span>{pencilOnly && <span>✏️ Pencil draws • fingers zoom and pan</span>}<span>🖱 Ctrl-wheel zoom • Space-drag pan</span></div>
     </div>}
   </>;
 }

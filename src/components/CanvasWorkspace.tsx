@@ -11,7 +11,7 @@ export function CanvasWorkspace({
   onRotateSelected, onDeleteSelected, onRotateCanvas, onResetCanvasRotation, onResetView,
   onWheel, onStagePointerDown, onStagePointerMove, onStagePointerUp, onStagePointerCancel,
   clusterRef, stageRef, sizeControlRef, opacityControlRef, brushSize, brushMinimum, brushMaximum, opacity, onBrushSize, onOpacity, onOpenBrush,
-  drawingActive, canvasSize, displaySize, pan, visibleRef, fillPreviewRef, fillPreviewActive, tool, brushCursor,
+  drawingActive, canvasSize, displaySize, pan, visibleRef, fillPreviewRef, fillPreviewActive, tool, brushCursorRef,
   onCanvasPointerDown, onCanvasPointerMove, onCanvasPointerUp, onCanvasPointerCancel,
   onCanvasPointerEnter, onCanvasPointerLeave,
 }: {
@@ -49,7 +49,7 @@ export function CanvasWorkspace({
   fillPreviewRef: RefObject<HTMLCanvasElement>;
   fillPreviewActive: boolean;
   tool: Tool;
-  brushCursor: Point | null;
+  brushCursorRef: RefObject<HTMLSpanElement>;
   onCanvasPointerDown: PointerEventHandler<HTMLCanvasElement>;
   onCanvasPointerMove: PointerEventHandler<HTMLCanvasElement>;
   onCanvasPointerUp: PointerEventHandler<HTMLCanvasElement>;
@@ -128,11 +128,11 @@ export function CanvasWorkspace({
             onContextMenu={(event) => event.preventDefault()}
           />
           <canvas ref={fillPreviewRef} className={`fill-preview-canvas${fillPreviewActive ? ' is-active' : ''}`} width={canvasSize.width} height={canvasSize.height} aria-hidden="true" />
-          {brushCursor && (tool === 'brush' || tool === 'eraser') && <span
+          {(tool === 'brush' || tool === 'eraser') && <span
+            ref={brushCursorRef}
             className={`brush-size-outline${tool === 'eraser' ? ' is-eraser' : ''}`}
             style={{
-              left: `${brushCursor.x / canvasSize.width * 100}%`,
-              top: `${brushCursor.y / canvasSize.height * 100}%`,
+              display: 'none',
               width: Math.max(5, brushSize * (displaySize?.width ?? canvasSize.width) / canvasSize.width),
               height: Math.max(5, brushSize * (displaySize?.width ?? canvasSize.width) / canvasSize.width),
             }}

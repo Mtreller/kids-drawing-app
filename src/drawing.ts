@@ -1,5 +1,6 @@
-export const ART_WIDTH = 1200;
-export const ART_HEIGHT = 900;
+// Sharp on Retina tablets while keeping flood fill and region masks fast.
+export const ART_WIDTH = 1600;
+export const ART_HEIGHT = 1200;
 
 export type Point = { x: number; y: number };
 export type Tool = 'brush' | 'eraser' | 'fill' | 'move';
@@ -173,6 +174,7 @@ export function fillRegion(canvas: HTMLCanvasElement, point: Point, color: strin
     Math.abs(image.data[offset + 3] - target[3]) <= tolerance;
   const visited = new Uint8Array(width * height);
   const queue = new Int32Array(width * height);
+  const edges: number[] = [];
   const firstPixel = y * width + x;
   queue[0] = firstPixel;
   visited[firstPixel] = 1;
@@ -201,21 +203,77 @@ export function fillRegion(canvas: HTMLCanvasElement, point: Point, color: strin
       if (neighbor < 0 || visited[neighbor]) continue;
       visited[neighbor] = 1;
       if (matches(neighbor * 4)) queue[tail++] = neighbor;
+      else edges.push(neighbor);
     }
   }
   if (!changed) return false;
+  recolorFringe(image.data, width, height, edges, visited, target, fill);
   context.putImageData(image, 0, 0);
   return true;
 }
 
+const luminance = (red: number, green: number, blue: number) => .2126 * red + .7152 * green + .0722 * blue;
+
+/**
+ * Anti-aliased line art leaves a ring of light grey pixels that a plain flood
+ * fill skips, so filled areas get a white halo. Treat each fringe pixel as a
+ * blend of the old colour and a dark line, then swap the old colour for the new
+ * one. Lines stay smooth and dark; colourful neighbours are left alone.
+ */
+export function recolorFringe(
+  data: Uint8ClampedArray,
+  width: number,
+  height: number,
+  edges: number[],
+  visited: Uint8Array,
+  target: number[],
+  fill: number[],
+) {
+  const targetLight = luminance(target[0], target[1], target[2]);
+  if (targetLight < 40 || target[3] < 200) return;
+  let ring = edges;
+  for (let pass = 0; pass < 2 && ring.length; pass += 1) {
+    const next: number[] = [];
+    for (const pixel of ring) {
+      const offset = pixel * 4;
+      const red = data[offset];
+      const green = data[offset + 1];
+      const blue = data[offset + 2];
+      const share = Math.min(1, luminance(red, green, blue) / targetLight);
+      if (share < .08) continue;
+      // The pixel must look like "old colour mixed with near-black".
+      if (
+        Math.abs(red - target[0] * share) > 46 ||
+        Math.abs(green - target[1] * share) > 46 ||
+        Math.abs(blue - target[2] * share) > 46
+      ) continue;
+      data[offset] = red + share * (fill[0] - target[0]);
+      data[offset + 1] = green + share * (fill[1] - target[1]);
+      data[offset + 2] = blue + share * (fill[2] - target[2]);
+      visited[pixel] = 2;
+      if (pass > 0 || share < .3) continue;
+      const x = pixel % width;
+      const y = (pixel - x) / width;
+      if (x < width - 1 && !visited[pixel + 1]) { visited[pixel + 1] = 3; next.push(pixel + 1); }
+      if (x > 0 && !visited[pixel - 1]) { visited[pixel - 1] = 3; next.push(pixel - 1); }
+      if (y < height - 1 && !visited[pixel + width]) { visited[pixel + width] = 3; next.push(pixel + width); }
+      if (y > 0 && !visited[pixel - width]) { visited[pixel - width] = 3; next.push(pixel - width); }
+    }
+    ring = next;
+  }
+}
+
 function hexToRgba(hex: string) {
-  const value = Number.parseInt(hex.replace('#', ''), 16);
+  const raw = hex.replace('#', '');
+  const value = Number.parseInt(raw.length === 3 ? raw.split('').map((part) => part + part).join('') : raw, 16) || 0;
   return [(value >> 16) & 255, (value >> 8) & 255, value & 255, 255];
 }
 
 export function newObject(kind: ArtObject['kind'], color: string, sticker?: string, canvasWidth = ART_WIDTH, canvasHeight = ART_HEIGHT): ArtObject {
+  // Keep new shapes a similar size on screen whatever the page resolution.
+  const scale = Math.max(.8, Math.min(1.6, Math.min(canvasWidth, canvasHeight) / 900));
   return {
     id: crypto.randomUUID(), kind, x: canvasWidth / 2, y: canvasHeight / 2,
-    width: kind === 'rectangle' ? 250 : 210, height: 210, rotation: 0, color, sticker,
+    width: (kind === 'rectangle' ? 250 : 210) * scale, height: 210 * scale, rotation: 0, color, sticker,
   };
 }
