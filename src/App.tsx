@@ -2052,7 +2052,6 @@ export function App() {
         onMove={() => chooseTool('move')}
         onShapes={() => setPanel(panel === 'shapes' ? null : 'shapes')}
         onStickers={() => setPanel(panel === 'stickers' ? null : 'stickers')}
-        onReset={resetPage}
       />
 
       <FloatingPanels

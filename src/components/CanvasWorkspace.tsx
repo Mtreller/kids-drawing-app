@@ -1,5 +1,5 @@
 import type { CSSProperties, PointerEventHandler, Ref, RefObject, WheelEventHandler } from 'react';
-import { useEffect, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import type { ArtObject, Point, Tool } from '../drawing';
 import { ToolIcon } from '../icons';
 import { VerticalRange } from './Controls';
@@ -64,6 +64,16 @@ export function CanvasWorkspace({
 }) {
   const [sizeOpen, setSizeOpen] = useState(false);
   const [opacityOpen, setOpacityOpen] = useState(false);
+
+  // Show a live circle of the real brush size on the page while it changes.
+  const [sizePreview, setSizePreview] = useState(false);
+  const firstSize = useRef(true);
+  useEffect(() => {
+    if (firstSize.current) { firstSize.current = false; return; }
+    setSizePreview(true);
+    const timer = window.setTimeout(() => setSizePreview(false), 750);
+    return () => window.clearTimeout(timer);
+  }, [brushSize]);
 
   useEffect(() => {
     if (!drawingActive) return;
@@ -155,6 +165,15 @@ export function CanvasWorkspace({
             onContextMenu={(event) => event.preventDefault()}
           />
           <canvas ref={fillPreviewRef} className={`fill-preview-canvas${fillPreviewActive ? ' is-active' : ''}`} width={canvasSize.width} height={canvasSize.height} aria-hidden="true" />
+          {sizePreview && <span
+            className="brush-size-preview"
+            style={{
+              width: Math.max(4, brushSize * (displaySize?.width ?? canvasSize.width) / canvasSize.width),
+              height: Math.max(4, brushSize * (displaySize?.width ?? canvasSize.width) / canvasSize.width),
+              background: tool === 'eraser' ? 'rgb(255 255 255 / 70%)' : color,
+            }}
+            aria-hidden="true"
+          />}
           {(tool === 'brush' || tool === 'eraser') && <span
             ref={brushCursorRef}
             className={`brush-size-outline${tool === 'eraser' ? ' is-eraser' : ''}`}

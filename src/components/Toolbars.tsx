@@ -53,7 +53,7 @@ export function TopBar({
 
 export function ToolDock({
   kidMode, tool, panel, stayInLines, color, canUndo,
-  onBrush, onStayInLines, onEraser, onFill, onMove, onShapes, onStickers, onReset, onUndo,
+  onBrush, onStayInLines, onEraser, onFill, onMove, onShapes, onStickers, onUndo,
 }: {
   kidMode: boolean;
   tool: Tool;
@@ -68,7 +68,6 @@ export function ToolDock({
   onMove: () => void;
   onShapes: () => void;
   onStickers: () => void;
-  onReset: () => void;
   onUndo: () => void;
 }) {
   if (kidMode) {
@@ -93,7 +92,6 @@ export function ToolDock({
     <IconButton icon={<ToolIcon name="move" />} label="Move objects" active={tool === 'move'} onClick={onMove} />
     <IconButton icon={<ToolIcon name="shapes" />} label="Shapes" active={panel === 'shapes'} onClick={onShapes} />
     <IconButton icon={<ToolIcon name="sticker" />} label="Stickers" active={panel === 'stickers'} onClick={onStickers} />
-    <IconButton icon={<ToolIcon name="reset" />} label="Reset page" className="reset-tool" onClick={onReset} />
   </nav>;
 }
 
