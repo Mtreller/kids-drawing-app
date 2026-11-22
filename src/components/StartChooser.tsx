@@ -2,14 +2,9 @@ import { useEffect, useState } from 'react';
 import { bitmapSource } from '../history';
 import { ToolIcon } from '../icons';
 import type { DrawingSummary, Profile } from '../storage';
-import { InstallHelper } from './InstallHelper';
+import { playSound } from '../sounds';
+import { GrownUpHold } from './GrownUpHold';
 
-const previewPages = [
-  `${import.meta.env.BASE_URL}drawings/kpop/stage-dance.webp`,
-  `${import.meta.env.BASE_URL}drawings/unicorns-princesses/unicorn-hill.webp`,
-  `${import.meta.env.BASE_URL}drawings/stitch/happy-stitch.webp`,
-  `${import.meta.env.BASE_URL}drawings/paw-patrol/chase-standing-proudly.webp`,
-];
 
 function SavedPreview({ bitmap }: { bitmap: string | Blob }) {
   const [url, setUrl] = useState<string | null>(null);
@@ -45,66 +40,37 @@ export function StartChooser({
   onContinue: () => void;
   onSwitchProfile: () => void;
 }) {
-  const continueLabel = sessionStarted ? 'Keep this drawing' : 'Continue last drawing';
-  return <div className="start-chooser" role="dialog" aria-modal="true" aria-labelledby="start-chooser-title">
+  const tap = (action: () => void) => () => { playSound('tap'); action(); };
+  return <div className="start-chooser start-chooser--kid" role="dialog" aria-modal="true" aria-labelledby="start-chooser-title">
     <div className="start-chooser__panel">
       <header className="start-chooser__header">
-        <span className="brand__mark" aria-hidden="true">✦</span>
-        <div>
-          <span className="eyebrow">Color Pop</span>
-          <h1 id="start-chooser-title">What do you want to make?</h1>
-        </div>
         {profile && <button type="button" className="profile-chip" onClick={onSwitchProfile} aria-label={`Switch artist, currently ${profile.name}`}>
           <span className="profile-avatar profile-avatar--chip" style={{ background: profile.color }}>{profile.emoji}</span>
-          <span>
-            <b>{profile.name}</b>
-            <small>Switch artist</small>
-          </span>
+          <b>{profile.name}</b>
         </button>}
+        <h1 id="start-chooser-title">What shall we make?</h1>
       </header>
-      <div className="start-chooser__choices">
-        <button type="button" className="start-choice start-choice--drawings" onClick={onColorDrawing}>
-          <span className="start-choice__mosaic" aria-hidden="true">
-            {previewPages.map((src) => <img key={src} src={src} alt="" />)}
+      <div className="kid-choices">
+        {showContinue && <button type="button" className="kid-choice kid-choice--continue" onClick={tap(onContinue)}>
+          <span className="kid-choice__art kid-choice__art--saved" aria-hidden="true">
+            {savedBitmap ? <SavedPreview bitmap={savedBitmap} /> : <span className="kid-choice__emoji">▶️</span>}
+            <span className="kid-choice__badge">▶</span>
           </span>
-          <span className="start-choice__copy">
-            <ToolIcon name="library" size={22} />
-            <b>Color a drawing</b>
-            <small>Pick a coloring page</small>
-          </span>
-        </button>
-        <button type="button" className="start-choice start-choice--blank" onClick={onBlankCanvas}>
-          <span className="start-choice__blank-preview" aria-hidden="true">
-            <ToolIcon name="newCanvas" size={42} />
-          </span>
-          <span className="start-choice__copy">
-            <ToolIcon name="page" size={22} />
-            <b>Blank canvas</b>
-            <small>Start with a fresh page</small>
-          </span>
-        </button>
-        <button type="button" className="start-choice start-choice--mine" onClick={onMyDrawings}>
-          <span className="start-choice__blank-preview" aria-hidden="true">
-            <ToolIcon name="continue" size={42} />
-          </span>
-          <span className="start-choice__copy">
-            <ToolIcon name="library" size={22} />
-            <b>My drawings</b>
-            <small>{savedCount ? `${savedCount} saved ${savedCount === 1 ? 'picture' : 'pictures'}` : 'Saved pictures live here'}</small>
-          </span>
-        </button>
-        {showContinue && <button type="button" className="start-choice start-choice--continue" onClick={onContinue}>
-          <span className="start-choice__saved-preview" aria-hidden="true">
-            {savedBitmap ? <SavedPreview bitmap={savedBitmap} /> : <span className="start-chooser__blank-preview" />}
-          </span>
-          <span className="start-choice__copy">
-            <ToolIcon name="continue" size={22} />
-            <b>{continueLabel}</b>
-            <small>{sessionStarted ? 'Go back to the page on screen' : 'Pick up where you left off'}</small>
-          </span>
+          <b>{sessionStarted ? 'Back to it' : 'Keep going'}</b>
         </button>}
+        <button type="button" className="kid-choice kid-choice--color" onClick={tap(onColorDrawing)}>
+          <span className="kid-choice__art" aria-hidden="true"><span className="kid-choice__emoji">🖍️</span><span className="kid-choice__emoji kid-choice__emoji--small">📖</span></span>
+          <b>Color a picture</b>
+        </button>
+        <button type="button" className="kid-choice kid-choice--blank" onClick={tap(onBlankCanvas)}>
+          <span className="kid-choice__art" aria-hidden="true"><span className="kid-choice__emoji">✏️</span><span className="kid-choice__emoji kid-choice__emoji--small">📄</span></span>
+          <b>Draw anything</b>
+        </button>
+        <button type="button" className="kid-choice kid-choice--mine" onClick={tap(onMyDrawings)}>
+          <span className="kid-choice__art" aria-hidden="true"><span className="kid-choice__emoji">🖼️</span>{savedCount > 0 && <span className="kid-choice__count">{savedCount}</span>}</span>
+          <b>My art</b>
+        </button>
       </div>
-      <InstallHelper />
     </div>
   </div>;
 }
@@ -136,14 +102,12 @@ export function SavedDrawingGrid({ drawings, emptyLabel, onSelect, onDelete }: {
         <strong>{drawing.title}</strong>
         <small>Open saved picture</small>
       </button>
-      <button
-        type="button"
+      <GrownUpHold
         className="drawing-card__delete"
-        aria-label={`Delete ${drawing.title}`}
-        onClick={() => {
-          if (window.confirm(`Delete “${drawing.title}”?`)) onDelete(drawing.id);
-        }}
-      ><ToolIcon name="close" size={16} /></button>
+        label={`Delete ${drawing.title}`}
+        onConfirm={() => onDelete(drawing.id)}
+        onTapHint={() => playSound('nope')}
+      ><ToolIcon name="close" size={16} /></GrownUpHold>
     </div>)}
   </div>;
 }

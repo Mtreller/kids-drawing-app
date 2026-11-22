@@ -67,16 +67,16 @@ type StoredDrawing = Omit<SavedDrawing, 'thumbnail' | 'snapshot'> & {
 type SyncOptions = { sync?: boolean };
 
 export const PROFILE_AVATARS = [
-  { emoji: '🦄', color: '#f3c4ff' },
-  { emoji: '🐶', color: '#ffd6a5' },
-  { emoji: '🌟', color: '#fff3a0' },
-  { emoji: '🚀', color: '#bde0fe' },
-  { emoji: '🐸', color: '#c8f5c0' },
-  { emoji: '🦋', color: '#d0bfff' },
-  { emoji: '🦖', color: '#b9fbc0' },
-  { emoji: '🐯', color: '#ffc8a8' },
-  { emoji: '🐙', color: '#ffadad' },
-  { emoji: '🌈', color: '#caffbf' },
+  { emoji: '🦄', color: '#f3c4ff', name: 'Unicorn' },
+  { emoji: '🐶', color: '#ffd6a5', name: 'Puppy' },
+  { emoji: '🌟', color: '#fff3a0', name: 'Star' },
+  { emoji: '🚀', color: '#bde0fe', name: 'Rocket' },
+  { emoji: '🐸', color: '#c8f5c0', name: 'Froggy' },
+  { emoji: '🦋', color: '#d0bfff', name: 'Butterfly' },
+  { emoji: '🦖', color: '#b9fbc0', name: 'Dino' },
+  { emoji: '🐯', color: '#ffc8a8', name: 'Tiger' },
+  { emoji: '🐙', color: '#ffadad', name: 'Octopus' },
+  { emoji: '🌈', color: '#caffbf', name: 'Rainbow' },
 ] as const;
 
 export function makeId() {

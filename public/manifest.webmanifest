@@ -5,7 +5,10 @@
   "start_url": "/kids-drawing-app/",
   "scope": "/kids-drawing-app/",
   "display": "standalone",
-  "display_override": ["fullscreen", "standalone"],
+  "display_override": [
+    "fullscreen",
+    "standalone"
+  ],
   "orientation": "any",
   "background_color": "#f7f2ff",
   "theme_color": "#7557ff",
@@ -14,6 +17,18 @@
       "src": "/kids-drawing-app/icon.svg",
       "sizes": "any",
       "type": "image/svg+xml",
+      "purpose": "any"
+    },
+    {
+      "src": "/kids-drawing-app/icon-192.png",
+      "sizes": "192x192",
+      "type": "image/png",
+      "purpose": "any maskable"
+    },
+    {
+      "src": "/kids-drawing-app/icon-512.png",
+      "sizes": "512x512",
+      "type": "image/png",
       "purpose": "any maskable"
     }
   ]

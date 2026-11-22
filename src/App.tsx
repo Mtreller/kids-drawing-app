@@ -15,7 +15,7 @@ import { brushPresets, drawBrushStroke, isMagicBrush, type BrushType } from './b
 import { copyCanvas, createRegionMaskCache, getRegionMask, restoreBaseLine, type RegionMaskCache } from './regionMask';
 import { bitmapSource, canvasToJpegBlob, canvasToPngBlob, scaledCanvas, trimHistory } from './history';
 import {
-  canvasPointFromClient, constrainPan, normalizeRotation,
+  canvasMetrics, canvasPointFromClient, canvasPointFromRect, clampZoom, constrainPan, normalizeRotation, solveViewGesture, zoomAroundPoint,
   type MouseResize, type MouseRotate, type MultiTouch, type ObjectGesture, type ViewGesture,
 } from './gestures';
 import { DrawingLibrary } from './components/DrawingLibrary';
@@ -26,10 +26,13 @@ import { ToolDock, TopBar, type PanelName } from './components/Toolbars';
 import { CanvasWorkspace } from './components/CanvasWorkspace';
 import { FloatingPanels } from './components/FloatingPanels';
 import { useColorDropGesture, type DragColor } from './hooks/useColorDropGesture';
+import { Celebration, SparkleLayer, type Burst } from './components/Celebrations';
+import { playSound, setSoundEnabled, soundEnabled } from './sounds';
 import { TOUCH_TAP_MOVE_PX, createTouchTapTracker, isTouchLikePointer, isUiTouchTarget } from './touchTap';
 
 type PageBase = { bitmap: string | Blob; width: number; height: number };
-type BrushCursor = { x: number; y: number } | null;
+type PencilPreference = 'auto' | 'on' | 'off';
+type PointerSample = { clientX: number; clientY: number; pressure: number };
 type SafariFullscreenDocument = Document & {
   webkitFullscreenElement?: Element | null;
   webkitExitFullscreen?: () => void | Promise<void>;
@@ -47,6 +50,50 @@ const BRUSH_MIN = 3;
 const BRUSH_MAX = 560;
 const BRUSH_DEFAULT = 56;
 const BRUSH_STEP = 8;
+/** Brushes painted on a temporary layer so overlapping segments never bead at low opacity. */
+const LAYERED_BRUSHES = new Set<BrushType>(['round', 'marker', 'pencil']);
+/** Touches this soon after the Pencil lifts are treated as a resting palm. */
+const PALM_GRACE_MS = 450;
+const DEFAULT_MESSAGE = 'Choose a tool and start creating!';
+
+/**
+ * Little kids can't read the status line, so kid mode shows only a few short,
+ * emoji-led toasts. Everything else is told through sound and sparkles.
+ */
+const KID_TOASTS: Array<[RegExp, string]> = [
+  [/^Try another enclosed area/, '👆 Tap inside a shape'],
+  [/^Start the brush inside a section/, '👆 Start inside a shape'],
+  [/^Undo$/, '↩️'],
+  [/^Redo$/, '↪️'],
+  [/^Welcome back/, '👋 Welcome back!'],
+  [/^Page reset/, '🧽 Fresh page'],
+  [/^✏️ Pencil ready/, '✏️ Pencil ready!'],
+  [/^Draw with the Pencil/, '✏️ Draw with the Pencil'],
+  [/^Could not save/, '😕 Try again'],
+  [/^That coloring page could not be loaded/, '😕 Try another picture'],
+  [/^Grown-ups/, '🔒 Grown-ups: press and hold'],
+  [/^Stay Inside Lines on/, '✨ Magic lines on'],
+  [/^Free drawing mode on/, '🖍️ Free drawing'],
+];
+const kidToastFor = (text: string) => KID_TOASTS.find(([pattern]) => pattern.test(text))?.[1] ?? null;
+
+const readKidMode = () => {
+  try { return window.localStorage.getItem('color-pop-kid-mode') !== 'off'; }
+  catch { return true; }
+};
+
+const readPencilPreference = (): PencilPreference => {
+  try {
+    const stored = window.localStorage.getItem('color-pop-pencil-only');
+    return stored === 'on' || stored === 'off' ? stored : 'auto';
+  } catch { return 'auto'; }
+};
+
+/** Blank pages follow the way the tablet is held. */
+const blankPageSize = () => {
+  const portrait = typeof window !== 'undefined' && window.innerHeight > window.innerWidth * 1.08;
+  return portrait ? { width: ART_HEIGHT, height: ART_WIDTH } : { width: ART_WIDTH, height: ART_HEIGHT };
+};
 
 export function App() {
   const visibleRef = useRef<HTMLCanvasElement>(null);
@@ -105,6 +152,20 @@ export function App() {
     createdAt: number;
   } | null>(null);
   const autosaveTimerRef = useRef<number | null>(null);
+  const selectedIdRef = useRef<string | null>(null);
+  const renderFrameRef = useRef<number | null>(null);
+  const strokeLayerRef = useRef<HTMLCanvasElement | null>(null);
+  const strokeLayerAlphaRef = useRef(1);
+  const strokeLayerActiveRef = useRef(false);
+  const brushCursorRef = useRef<HTMLSpanElement>(null);
+  const penDownRef = useRef(false);
+  const lastPenAtRef = useRef(0);
+  const activeStrokeToolRef = useRef<Tool | null>(null);
+  const lastPressureRef = useRef(1);
+  const notifyTimerRef = useRef<number | null>(null);
+  const displaySizeRef = useRef<{ width: number; height: number } | null>(null);
+  const pencilHintShownRef = useRef(false);
+  const finishAfterCelebrationRef = useRef(false);
 
   const [tool, setTool] = useState<Tool>('brush');
   const [color, setColor] = useState(colors[9]);
@@ -124,8 +185,16 @@ export function App() {
   const [panel, setPanel] = useState<PanelName>(null);
   const [dragColor, setDragColor] = useState<DragColor>(null);
   const [fillPreviewActive, setFillPreviewActive] = useState(false);
-  const [brushCursor, setBrushCursor] = useState<BrushCursor>(null);
-  const [message, setMessage] = useState('Choose a tool and start creating!');
+  const [message, setMessage] = useState(DEFAULT_MESSAGE);
+  const [pencilPreference, setPencilPreference] = useState<PencilPreference>(readPencilPreference);
+  const [penSeen, setPenSeen] = useState(false);
+  const [kidMode, setKidMode] = useState(readKidMode);
+  const kidModeRef = useRef(kidMode);
+  kidModeRef.current = kidMode;
+  const [soundOn, setSoundOn] = useState(soundEnabled);
+  const [bursts, setBursts] = useState<Burst[]>([]);
+  const [celebration, setCelebration] = useState<{ emoji: string; label: string } | null>(null);
+  const burstIdRef = useRef(0);
   const [revision, setRevision] = useState(0);
   const [zoom, setZoom] = useState(1);
   const [pan, setPan] = useState<Point>({ x: 0, y: 0 });
@@ -153,6 +222,23 @@ export function App() {
   useEffect(() => { objectsRef.current = objects; }, [objects]);
   useEffect(() => { profileRef.current = activeProfile; }, [activeProfile]);
   useEffect(() => { brushTypeRef.current = brushType; }, [brushType]);
+  useEffect(() => { selectedIdRef.current = selectedId; }, [selectedId]);
+  useEffect(() => {
+    try { window.localStorage.setItem('color-pop-kid-mode', kidMode ? 'on' : 'off'); }
+    catch { /* Applies for this session. */ }
+  }, [kidMode]);
+  useEffect(() => { displaySizeRef.current = displaySize; }, [displaySize]);
+  useEffect(() => {
+    try {
+      if (pencilPreference === 'auto') window.localStorage.removeItem('color-pop-pencil-only');
+      else window.localStorage.setItem('color-pop-pencil-only', pencilPreference);
+    } catch { /* The preference still applies for this session. */ }
+  }, [pencilPreference]);
+  /** With a Pencil in use, fingers only zoom, pan and tap-undo; they never paint. */
+  const pencilOnly = pencilPreference === 'on' || (pencilPreference === 'auto' && penSeen);
+  const pencilOnlyRef = useRef(pencilOnly);
+  pencilOnlyRef.current = pencilOnly;
+  const palmGuardActive = () => penDownRef.current || performance.now() - lastPenAtRef.current < PALM_GRACE_MS;
   useEffect(() => {
     try { window.localStorage.setItem('color-pop-left-handed', String(leftHanded)); }
     catch { /* Settings still work for this session when storage is unavailable. */ }
@@ -241,7 +327,11 @@ export function App() {
 
   const refreshHistoryState = () => setHistoryState({ undo: history.current.length > 1, redo: future.current.length > 0 });
 
-  const render = useCallback(() => {
+  const renderNow = useCallback(() => {
+    if (renderFrameRef.current !== null) {
+      cancelAnimationFrame(renderFrameRef.current);
+      renderFrameRef.current = null;
+    }
     const canvas = visibleRef.current;
     const backing = backingRef.current;
     if (!canvas || !backing) return;
@@ -249,10 +339,80 @@ export function App() {
     if (!context) return;
     context.clearRect(0, 0, canvas.width, canvas.height);
     context.drawImage(backing, 0, 0);
-    objectsRef.current.forEach((object) => drawObject(context, object, object.id === selectedId));
-  }, [selectedId]);
+    const layer = strokeLayerRef.current;
+    if (strokeLayerActiveRef.current && layer) {
+      context.save();
+      context.globalAlpha = strokeLayerAlphaRef.current;
+      context.drawImage(layer, 0, 0);
+      context.restore();
+    }
+    objectsRef.current.forEach((object) => drawObject(context, object, object.id === selectedIdRef.current));
+  }, []);
 
-  useEffect(() => { render(); }, [render, objects, revision]);
+  /** Paint at most once per display frame, without asking React to re-render. */
+  const requestRender = useCallback(() => {
+    if (renderFrameRef.current !== null) return;
+    renderFrameRef.current = requestAnimationFrame(() => {
+      renderFrameRef.current = null;
+      renderNow();
+    });
+  }, [renderNow]);
+
+  useEffect(() => { renderNow(); }, [renderNow, objects, revision, selectedId, canvasSize]);
+  useEffect(() => () => { if (renderFrameRef.current !== null) cancelAnimationFrame(renderFrameRef.current); }, []);
+
+  /** Flatten the in-progress stroke into the page. */
+  const commitStrokeLayer = useCallback(() => {
+    const layer = strokeLayerRef.current;
+    const backing = backingRef.current;
+    if (!strokeLayerActiveRef.current || !layer || !backing) return;
+    const context = backing.getContext('2d');
+    if (context) {
+      context.save();
+      context.globalAlpha = strokeLayerAlphaRef.current;
+      context.drawImage(layer, 0, 0);
+      context.restore();
+    }
+    layer.getContext('2d')?.clearRect(0, 0, layer.width, layer.height);
+    strokeLayerActiveRef.current = false;
+    requestRender();
+  }, [requestRender]);
+
+  const moveBrushCursor = useCallback((point: Point | null) => {
+    const element = brushCursorRef.current;
+    const backing = backingRef.current;
+    if (!element) return;
+    if (!point || !backing) {
+      element.style.display = 'none';
+      return;
+    }
+    element.style.display = 'block';
+    element.style.left = `${point.x / backing.width * 100}%`;
+    element.style.top = `${point.y / backing.height * 100}%`;
+  }, []);
+
+  /** Where a page point currently sits on screen (for sparkles). */
+  const canvasPointToClient = (point: Point) => {
+    const canvas = visibleRef.current;
+    if (!canvas) return null;
+    const rect = canvas.getBoundingClientRect();
+    const localX = (point.x / canvas.width - .5) * canvas.clientWidth * zoom;
+    const localY = (point.y / canvas.height - .5) * canvas.clientHeight * zoom;
+    const cosine = Math.cos(canvasRotation);
+    const sine = Math.sin(canvasRotation);
+    return {
+      x: rect.left + rect.width / 2 + localX * cosine - localY * sine,
+      y: rect.top + rect.height / 2 + localX * sine + localY * cosine,
+    };
+  };
+
+  const sparkleAt = (point: Point | null, sparkColor: string, big = false) => {
+    const screen = point ? canvasPointToClient(point) : null;
+    if (!screen) return;
+    const id = ++burstIdRef.current;
+    setBursts((list) => [...list.slice(-5), { id, x: screen.x, y: screen.y, color: sparkColor, big }]);
+    window.setTimeout(() => setBursts((list) => list.filter((burst) => burst.id !== id)), 900);
+  };
 
   const capturePageBase = useCallback((source: HTMLCanvasElement) => {
     const baseCanvas = copyCanvas(source);
@@ -317,11 +477,11 @@ export function App() {
     drawingId: string;
     title: string;
     createdAt: number;
-  }) => {
+  }, capturedArt?: HTMLCanvasElement | null) => {
     const profile = identity?.profile ?? profileRef.current;
     const drawingId = identity?.drawingId ?? drawingIdRef.current;
     if (!profile || !drawingId) throw new Error('Pick an artist before saving.');
-    const art = compositeArt();
+    const art = capturedArt ?? compositeArt();
     const thumbnail = art
       ? await canvasToJpegBlob(scaledCanvas(art, 360)).catch(() => canvasToPngBlob(scaledCanvas(art, 360)))
       : await makeThumbnail(current);
@@ -344,7 +504,8 @@ export function App() {
       updatedAt: record.updatedAt,
     };
     setDrawings((list) => [summary, ...list.filter((drawing) => drawing.id !== record.id)]);
-    setSavedArtwork(current);
+    // A background save of a drawing we've already left must not replace "keep going".
+    if (record.id === drawingIdRef.current) setSavedArtwork(current);
   }, [compositeArt]);
 
   const scheduleAutosave = useCallback((current: Snapshot) => {
@@ -510,8 +671,11 @@ export function App() {
 
   const notify = (text: string) => {
     setMessage(text);
-    window.setTimeout(() => setMessage('Choose a tool and start creating!'), 2400);
+    // One timer, so a new message is never cut short by an older one.
+    if (notifyTimerRef.current) window.clearTimeout(notifyTimerRef.current);
+    notifyTimerRef.current = window.setTimeout(() => setMessage(DEFAULT_MESSAGE), 2400);
   };
+  useEffect(() => () => { if (notifyTimerRef.current) window.clearTimeout(notifyTimerRef.current); }, []);
   notifyRef.current = notify;
 
   const beginDrawing = () => {
@@ -528,9 +692,10 @@ export function App() {
     setTool(nextTool);
     setPanel(null);
     setDrawingActive(false);
-    if (nextTool !== 'brush' && nextTool !== 'eraser') setBrushCursor(null);
+    if (nextTool !== 'brush' && nextTool !== 'eraser') moveBrushCursor(null);
     activeRegionMaskRef.current = null;
     haptic(6);
+    playSound('tap');
   };
 
   const toggleStayInLines = () => {
@@ -593,25 +758,47 @@ export function App() {
     setDrawingActive(false);
     activeRegionMaskRef.current = null;
     haptic(7);
+    playSound(isMagicBrush(nextBrush) ? 'sparkle' : 'tap');
+    if (kidModeRef.current) setPanel(null);
     setMessage(`${preset?.icon ?? '🖌️'} ${preset?.name ?? 'Brush'} selected`);
   };
 
   const selectColor = (nextColor: string) => {
+    if (nextColor !== color) playSound('tap');
     setColor(nextColor);
     if (!isMagicBrush(brushTypeRef.current)) return;
     setBrushType(lastSolidBrushRef.current);
     setMessage('Color selected');
   };
 
-  const drawLine = (from: Point, to: Point, pointerType = 'touch', pressure = 1) => {
+  const drawLine = (from: Point, to: Point, pointerType = 'touch', pressure = 1, strokeTool: Tool = tool) => {
     const backing = backingRef.current;
     const context = backing?.getContext('2d');
     if (!context || !backing) return;
-    const pressureScale = pointerType === 'pen' ? .3 + Math.max(.05, pressure) * .7 : 1;
-    const lineWidth = brushSize * pressureScale;
+    // Blend pressure between samples so pen strokes swell and taper smoothly.
+    const blendedPressure = pointerType === 'pen' ? (lastPressureRef.current + Math.max(.05, pressure)) / 2 : 1;
+    if (pointerType === 'pen') lastPressureRef.current = Math.max(.05, pressure);
+    const pressureScale = pointerType === 'pen' ? .25 + blendedPressure * .85 : 1;
+    const lineWidth = Math.max(1, brushSize * Math.min(1.1, pressureScale));
     const alpha = Math.max(.03, opacity * flow);
     const mask = stayInLines ? activeRegionMaskRef.current : null;
-    if (tool === 'eraser') {
+    if (strokeTool === 'brush' && LAYERED_BRUSHES.has(brushType)) {
+      let layer = strokeLayerRef.current;
+      if (!layer) {
+        layer = document.createElement('canvas');
+        strokeLayerRef.current = layer;
+      }
+      if (layer.width !== backing.width || layer.height !== backing.height) {
+        layer.width = backing.width;
+        layer.height = backing.height;
+        strokeLayerActiveRef.current = false;
+      }
+      const scratch = scratchCanvasRef.current ?? document.createElement('canvas');
+      scratchCanvasRef.current = scratch;
+      drawBrushStroke({ backing: layer, mask, scratch, from, to, color, size: lineWidth, alpha: 1, type: brushType });
+      strokeLayerAlphaRef.current = alpha;
+      strokeLayerActiveRef.current = true;
+    } else if (strokeTool === 'eraser') {
       const base = baseCanvasRef.current;
       if (!base) return;
       const scratch = scratchCanvasRef.current ?? document.createElement('canvas');
@@ -623,7 +810,7 @@ export function App() {
       drawBrushStroke({ backing, mask, scratch, from, to, color, size: lineWidth, alpha, type: brushType });
     }
     strokeStarted.current = true;
-    setRevision((value) => value + 1);
+    requestRender();
   };
 
   const resetView = () => {
@@ -650,18 +837,27 @@ export function App() {
     notify('Canvas returned upright');
   };
 
+  /** Untransformed centre of the page on screen (its transform pivots around the centre). */
+  const canvasOrigin = () => {
+    const wrap = visibleRef.current?.parentElement;
+    if (!wrap) return { x: window.innerWidth / 2, y: window.innerHeight / 2 };
+    const rect = wrap.getBoundingClientRect();
+    return { x: rect.left + rect.width / 2 - pan.x, y: rect.top + rect.height / 2 - pan.y };
+  };
+
   const wheelCanvas = (event: React.WheelEvent<HTMLElement>) => {
     event.preventDefault();
     const unit = event.deltaMode === 1 ? 16 : 1;
     if (event.ctrlKey || event.metaKey) {
-      const nextZoom = Math.max(1, Math.min(4, zoom * Math.exp(-event.deltaY * unit * .008)));
+      const nextZoom = clampZoom(zoom * Math.exp(-event.deltaY * unit * .008));
+      const focusPan = zoomAroundPoint(zoom, nextZoom, pan, { x: event.clientX, y: event.clientY }, canvasOrigin());
       setZoom(nextZoom);
-      setPan(constrainPan(nextZoom, pan));
+      setPan(constrainPan(nextZoom, focusPan, displaySize, canvasRotation));
       setMessage(`Canvas zoom ${Math.round(nextZoom * 100)}%`);
       return;
     }
     if (zoom > 1) {
-      setPan(constrainPan(zoom, { x: pan.x - event.deltaX * unit, y: pan.y - event.deltaY * unit }));
+      setPan(constrainPan(zoom, { x: pan.x - event.deltaX * unit, y: pan.y - event.deltaY * unit }, displaySize, canvasRotation));
       setMessage('Trackpad pan • pinch or Ctrl-wheel to zoom');
     }
   };
@@ -673,6 +869,8 @@ export function App() {
       setSelectedId(target.id);
       pushHistory();
       haptic(10);
+      playSound('pop');
+      sparkleAt(point, fillColor);
       notify('Object colored!');
       return;
     }
@@ -680,8 +878,13 @@ export function App() {
       setRevision((value) => value + 1);
       window.setTimeout(() => void commitCanvas('now'));
       haptic(10);
+      playSound('pop');
+      sparkleAt(point, fillColor);
       notify('Area filled!');
-    } else notify('Try another enclosed area');
+    } else {
+      playSound('nope');
+      notify('Try another enclosed area');
+    }
   };
 
   const clearFillPreview = () => {
@@ -760,6 +963,16 @@ export function App() {
     return tool !== 'move' || !selectedId || startedOutsideCanvas;
   };
 
+  /** Finger strokes in progress when a second finger lands become part of the page. */
+  const settleFingerStroke = () => {
+    if (penDownRef.current) return;
+    commitStrokeLayer();
+    lastPoint.current = null;
+    fillTap.current = null;
+    fillTapMoved.current = true;
+    moveBrushCursor(null);
+  };
+
   const beginMultiTouchSession = () => {
     if (screenPointers.current.size < 2) return;
     if (!multiTouch.current) {
@@ -769,28 +982,35 @@ export function App() {
         moved: false,
         initial: screenPointerPoints(),
       };
-      lastPoint.current = null;
-      fillTap.current = null;
-      fillTapMoved.current = true;
-      setBrushCursor(null);
+      settleFingerStroke();
     } else {
       multiTouch.current.maxPointers = Math.max(multiTouch.current.maxPointers, screenPointers.current.size);
     }
   };
 
-  const startCanvasNavigation = () => {
-    if (screenPointers.current.size < 2 || navigatingCanvas.current || !shouldNavigateCanvas()) return;
-    if (strokeStarted.current) pushHistory();
-    activeRegionMaskRef.current = null;
+  const viewGestureFromPointers = (): ViewGesture => {
     const [a, b] = [...screenPointers.current.values()];
-    viewGesture.current = {
+    return {
       distance: Math.max(1, Math.hypot(b.x - a.x, b.y - a.y)),
       angle: Math.atan2(b.y - a.y, b.x - a.x),
       center: { x: (a.x + b.x) / 2, y: (a.y + b.y) / 2 },
       zoom,
       pan: { ...pan },
       rotation: canvasRotation,
+      origin: canvasOrigin(),
+      rotationUnlocked: viewGesture.current?.rotationUnlocked ?? false,
     };
+  };
+
+  const startCanvasNavigation = () => {
+    if (screenPointers.current.size < 2 || navigatingCanvas.current || !shouldNavigateCanvas()) return;
+    if (strokeStarted.current && !penDownRef.current) {
+      commitStrokeLayer();
+      pushHistory();
+    }
+    activeRegionMaskRef.current = null;
+    viewGesture.current = null;
+    viewGesture.current = viewGestureFromPointers();
     lastPoint.current = null;
     strokeStarted.current = false;
     fillTap.current = null;
@@ -798,7 +1018,7 @@ export function App() {
     navigatingCanvas.current = true;
     beginMultiTouchSession();
     if (multiTouch.current) multiTouch.current.moved = true;
-    setBrushCursor(null);
+    moveBrushCursor(null);
     setMessage('Pinch, drag or twist anywhere around the canvas');
   };
 
@@ -808,19 +1028,24 @@ export function App() {
     multiTouch.current = null;
     navigatingCanvas.current = false;
     viewGesture.current = null;
-    pointers.current.clear();
-    lastPoint.current = null;
-    strokeStarted.current = false;
+    if (!penDownRef.current) {
+      pointers.current.clear();
+      lastPoint.current = null;
+      strokeStarted.current = false;
+      activeRegionMaskRef.current = null;
+    }
     fillTap.current = null;
     fillTapMoved.current = false;
-    activeRegionMaskRef.current = null;
     if (announce && didMove) notify(`Canvas ${Math.round(zoom * 100)}% • ${Math.round(canvasRotation * 180 / Math.PI)}°`);
     endDrawing();
   };
 
   const stagePointerDown = (event: React.PointerEvent<HTMLDivElement>) => {
-    if (!isTouchLikePointer(event)) return;
+    // Only fingers steer the page. The Pencil always draws, and a palm resting
+    // while the Pencil is down must never start a pinch.
+    if (event.pointerType !== 'touch') return;
     if (isUiTouchTarget(event.target)) return;
+    if (palmGuardActive()) return;
     screenPointers.current.set(event.pointerId, {
       x: event.clientX,
       y: event.clientY,
@@ -861,15 +1086,17 @@ export function App() {
       if (!multiTouch.current?.moved) return;
       startCanvasNavigation();
     }
-    if (!viewGesture.current) return;
+    const start = viewGesture.current;
+    if (!start) return;
     event.preventDefault();
-    const nextZoom = Math.max(1, Math.min(4, viewGesture.current.zoom * distance / viewGesture.current.distance));
-    setZoom(nextZoom);
-    setCanvasRotation(normalizeRotation(viewGesture.current.rotation + angle - viewGesture.current.angle));
-    setPan(constrainPan(nextZoom, {
-      x: viewGesture.current.pan.x + center.x - viewGesture.current.center.x,
-      y: viewGesture.current.pan.y + center.y - viewGesture.current.center.y,
-    }));
+    const next = solveViewGesture(start, { distance, angle, center });
+    if (next.rotationUnlocked && !start.rotationUnlocked) {
+      // Re-anchor so the turn starts smoothly from here.
+      viewGesture.current = { ...start, rotationUnlocked: true, angle, center, distance, zoom: next.zoom, pan: next.pan, rotation: next.rotation, origin: start.origin };
+    }
+    setZoom(next.zoom);
+    setCanvasRotation(next.rotation);
+    setPan(constrainPan(next.zoom, next.pan, displaySizeRef.current, next.rotation));
   };
 
   const stagePointerUp = (event: React.PointerEvent<HTMLDivElement>) => {
@@ -877,15 +1104,7 @@ export function App() {
     screenPointers.current.delete(event.pointerId);
     viewPointerOnCanvas.current.delete(event.pointerId);
     if (screenPointers.current.size >= 2 && navigatingCanvas.current) {
-      const [a, b] = [...screenPointers.current.values()];
-      viewGesture.current = {
-        distance: Math.max(1, Math.hypot(b.x - a.x, b.y - a.y)),
-        angle: Math.atan2(b.y - a.y, b.x - a.x),
-        center: { x: (a.x + b.x) / 2, y: (a.y + b.y) / 2 },
-        zoom,
-        pan: { ...pan },
-        rotation: canvasRotation,
-      };
+      viewGesture.current = viewGestureFromPointers();
       return;
     }
     if (screenPointers.current.size < 2) viewGesture.current = null;
@@ -893,13 +1112,51 @@ export function App() {
     finishCanvasNavigation();
   };
 
+  /** Fingers that land while a Pencil is in use should not paint. */
+  const touchIsBlocked = (pointerType: string, activeTool: Tool) => {
+    if (pointerType !== 'touch') return false;
+    if (palmGuardActive()) return true;
+    if (!pencilOnlyRef.current) return false;
+    return activeTool === 'brush' || activeTool === 'eraser' || activeTool === 'fill';
+  };
+
   const pointerDown = (event: React.PointerEvent<HTMLCanvasElement>) => {
     const canvas = event.currentTarget;
-    canvas.setPointerCapture(event.pointerId);
+    const isPen = event.pointerType === 'pen';
     if (event.pointerType === 'mouse' && event.button === 2) return;
-    if (navigatingCanvas.current || (multiTouch.current && tool !== 'move')) return;
+    if (isPen) {
+      penDownRef.current = true;
+      lastPenAtRef.current = performance.now();
+      lastPressureRef.current = Math.max(.05, event.pressure || .5);
+      if (!penSeen) {
+        setPenSeen(true);
+        if (pencilPreference === 'auto' && !pencilHintShownRef.current) {
+          pencilHintShownRef.current = true;
+          notify('✏️ Pencil ready • fingers now zoom and pan (change in Actions)');
+        }
+      }
+      // A palm that landed just before the Pencil should not keep steering the page.
+      if (navigatingCanvas.current || multiTouch.current) {
+        screenPointers.current.clear();
+        viewPointerOnCanvas.current.clear();
+        finishCanvasNavigation(false);
+      }
+    } else if (navigatingCanvas.current || (multiTouch.current && tool !== 'move')) return;
+
+    // The Pencil's eraser end (or barrel eraser button) erases for this stroke only.
+    const penEraser = isPen && (event.buttons & 32) === 32 && tool !== 'move';
+    const strokeTool: Tool = penEraser ? 'eraser' : tool;
+    if (touchIsBlocked(event.pointerType, strokeTool)) {
+      if (!palmGuardActive() && !pencilHintShownRef.current) {
+        pencilHintShownRef.current = true;
+        notify('Draw with the Pencil • fingers zoom and pan');
+      }
+      return;
+    }
+    try { canvas.setPointerCapture(event.pointerId); } catch { /* Pointer capture is a convenience only. */ }
+    activeStrokeToolRef.current = strokeTool;
     const point = pointFromClient(canvas, event.clientX, event.clientY)!;
-    if (tool === 'brush' || tool === 'eraser') setBrushCursor(point);
+    if (strokeTool === 'brush' || strokeTool === 'eraser') moveBrushCursor(point);
     pointers.current.set(event.pointerId, point);
 
     if ((event.button === 1 || (spaceHeld.current && event.button === 0)) && event.pointerType === 'mouse') {
@@ -907,15 +1164,15 @@ export function App() {
       return;
     }
 
-    if (tool === 'fill') {
+    if (strokeTool === 'fill') {
       fillTap.current = point;
       fillTapMoved.current = false;
       return;
     }
-    if (tool === 'move') {
+    if (strokeTool === 'move') {
       if (pointers.current.size > 1 && selectedId) return;
       const selected = objectsRef.current.find((object) => object.id === selectedId);
-      if (event.pointerType === 'mouse' && selected && hitRotateHandle(selected, point)) {
+      if (selected && hitRotateHandle(selected, point)) {
         mouseRotate.current = {
           id: selected.id,
           angle: Math.atan2(point.y - selected.y, point.x - selected.x),
@@ -926,7 +1183,7 @@ export function App() {
         notify('Drag around the object to rotate');
         return;
       }
-      if (event.pointerType === 'mouse' && selected && hitResizeHandle(selected, point)) {
+      if (selected && hitResizeHandle(selected, point)) {
         mouseResize.current = {
           id: selected.id,
           distance: Math.max(1, Math.hypot(point.x - selected.x, point.y - selected.y)),
@@ -947,8 +1204,8 @@ export function App() {
       }
       return;
     }
-    if (pointers.current.size === 1) {
-      if (stayInLines && (tool === 'brush' || tool === 'eraser')) {
+    if (pointers.current.size === 1 || isPen) {
+      if (stayInLines && (strokeTool === 'brush' || strokeTool === 'eraser')) {
         const baseCanvas = baseCanvasRef.current ?? (backingRef.current ? copyCanvas(backingRef.current) : null);
         if (!baseCanvas) {
           notify('The page is still getting ready');
@@ -973,30 +1230,73 @@ export function App() {
     }
   };
 
+  /** Every sample the device reported since the last frame (Apple Pencil sends up to 240 a second). */
+  const pointerSamples = (event: React.PointerEvent<HTMLCanvasElement>): PointerSample[] => {
+    const native = event.nativeEvent as PointerEvent;
+    const coalesced = typeof native.getCoalescedEvents === 'function' ? native.getCoalescedEvents() : [];
+    if (!coalesced.length) return [{ clientX: event.clientX, clientY: event.clientY, pressure: event.pressure }];
+    return coalesced.map((sample) => ({ clientX: sample.clientX, clientY: sample.clientY, pressure: sample.pressure }));
+  };
+
   const pointerMove = (event: React.PointerEvent<HTMLCanvasElement>) => {
-    const point = pointFromClient(event.currentTarget, event.clientX, event.clientY)!;
-    if (tool === 'brush' || tool === 'eraser') setBrushCursor(point);
-    if (navigatingCanvas.current || (multiTouch.current && tool !== 'move')) return;
-    if (!pointers.current.has(event.pointerId)) return;
-    pointers.current.set(event.pointerId, point);
+    const isPen = event.pointerType === 'pen';
+    if (isPen) lastPenAtRef.current = performance.now();
+    const activeTool = activeStrokeToolRef.current ?? tool;
+    const tracked = pointers.current.has(event.pointerId);
+    if (!tracked) {
+      // Hovering Pencil or mouse: show where the brush will land.
+      if ((tool === 'brush' || tool === 'eraser') && event.pointerType !== 'touch') {
+        moveBrushCursor(pointFromClient(event.currentTarget, event.clientX, event.clientY));
+      }
+      return;
+    }
+    if (!isPen && (navigatingCanvas.current || (multiTouch.current && activeTool !== 'move'))) return;
 
     if (mousePan.current) {
       setPan(constrainPan(zoom, {
         x: mousePan.current.pan.x + event.clientX - mousePan.current.point.x,
         y: mousePan.current.pan.y + event.clientY - mousePan.current.point.y,
-      }));
+      }, displaySize, canvasRotation));
       return;
     }
 
-    if (tool === 'fill' && fillTap.current && Math.hypot(point.x - fillTap.current.x, point.y - fillTap.current.y) > 12) {
+    if ((activeTool === 'brush' || activeTool === 'eraser') && lastPoint.current && (pointers.current.size === 1 || isPen)) {
+      const metrics = canvasMetrics(event.currentTarget);
+      const response = 1 - smoothing * .82;
+      let latest: Point | null = null;
+      for (const sample of pointerSamples(event)) {
+        const raw = canvasPointFromRect(metrics, sample.clientX, sample.clientY, canvasRotation, zoom)!;
+        latest = raw;
+        const from: Point | null = lastPoint.current;
+        if (!from) break;
+        const smoothedPoint: Point = {
+          x: from.x + (raw.x - from.x) * response,
+          y: from.y + (raw.y - from.y) * response,
+        };
+        if (Math.abs(smoothedPoint.x - from.x) + Math.abs(smoothedPoint.y - from.y) < .35) continue;
+        drawLine(from, smoothedPoint, event.pointerType, sample.pressure || 1, activeTool);
+        lastPoint.current = smoothedPoint;
+      }
+      if (latest) {
+        pointers.current.set(event.pointerId, latest);
+        moveBrushCursor(latest);
+      }
+      return;
+    }
+
+    const point = pointFromClient(event.currentTarget, event.clientX, event.clientY)!;
+    if (activeTool === 'brush' || activeTool === 'eraser') moveBrushCursor(point);
+    pointers.current.set(event.pointerId, point);
+
+    if (activeTool === 'fill' && fillTap.current && Math.hypot(point.x - fillTap.current.x, point.y - fillTap.current.y) > 12) {
       fillTapMoved.current = true;
       return;
     }
 
-    if (tool === 'move' && selectedId) {
+    if (activeTool === 'move' && selectedId) {
       const selected = objectsRef.current.find((object) => object.id === selectedId);
       if (!selected) return;
-      if (mouseRotate.current && event.pointerType === 'mouse') {
+      if (mouseRotate.current) {
         const angle = Math.atan2(point.y - selected.y, point.x - selected.x);
         updateObjects((items) => items.map((item) => item.id === mouseRotate.current!.id ? {
           ...item,
@@ -1005,7 +1305,7 @@ export function App() {
         objectChanged.current = true;
         return;
       }
-      if (mouseResize.current && event.pointerType === 'mouse') {
+      if (mouseResize.current) {
         const scale = Math.max(.25, Math.min(5, Math.hypot(point.x - selected.x, point.y - selected.y) / mouseResize.current.distance));
         updateObjects((items) => items.map((item) => item.id === mouseResize.current!.id ? {
           ...item,
@@ -1039,25 +1339,25 @@ export function App() {
         } : item));
         objectChanged.current = true;
       }
-      return;
-    }
-    if ((tool === 'brush' || tool === 'eraser') && lastPoint.current && pointers.current.size === 1) {
-      const response = 1 - smoothing * .82;
-      const smoothedPoint = {
-        x: lastPoint.current.x + (point.x - lastPoint.current.x) * response,
-        y: lastPoint.current.y + (point.y - lastPoint.current.y) * response,
-      };
-      drawLine(lastPoint.current, smoothedPoint, event.pointerType, event.pressure || 1);
-      lastPoint.current = smoothedPoint;
     }
   };
 
   const pointerUp = (event: React.PointerEvent<HTMLCanvasElement>) => {
-    const hadMultiplePointers = screenPointers.current.size > 1;
+    const isPen = event.pointerType === 'pen';
+    if (isPen) {
+      penDownRef.current = false;
+      lastPenAtRef.current = performance.now();
+    }
+    if (!pointers.current.has(event.pointerId)) {
+      if (event.pointerType === 'touch') moveBrushCursor(null);
+      return;
+    }
+    const activeTool = activeStrokeToolRef.current ?? tool;
+    const hadMultiplePointers = !isPen && screenPointers.current.size > 1;
     const releasedPoint = pointers.current.get(event.pointerId) ?? null;
     pointers.current.delete(event.pointerId);
-    if (navigatingCanvas.current || multiTouch.current) {
-      if (isTouchLikePointer(event)) setBrushCursor(null);
+    if (!isPen && (navigatingCanvas.current || multiTouch.current)) {
+      moveBrushCursor(null);
       return;
     }
     if (mousePan.current) {
@@ -1066,17 +1366,20 @@ export function App() {
       return;
     }
 
-    if (tool === 'fill' && fillTap.current && !fillTapMoved.current && !hadMultiplePointers) {
+    if (activeTool === 'fill' && fillTap.current && !fillTapMoved.current && !hadMultiplePointers && event.type !== 'pointercancel') {
       fillAt(fillTap.current);
     }
     if (!pointers.current.size) {
-      if ((tool === 'brush' || tool === 'eraser') && lastPoint.current && !strokeStarted.current && releasedPoint && !hadMultiplePointers) {
-        drawLine(lastPoint.current, { x: lastPoint.current.x + .1, y: lastPoint.current.y + .1 }, event.pointerType, event.pressure || 1);
-      } else if ((tool === 'brush' || tool === 'eraser') && lastPoint.current && strokeStarted.current && releasedPoint && !hadMultiplePointers) {
-        drawLine(lastPoint.current, releasedPoint, event.pointerType, event.pressure || 1);
+      const painting = activeTool === 'brush' || activeTool === 'eraser';
+      if (painting && lastPoint.current && !strokeStarted.current && releasedPoint && !hadMultiplePointers) {
+        // A single tap leaves a dot.
+        drawLine(lastPoint.current, { x: lastPoint.current.x + .1, y: lastPoint.current.y + .1 }, event.pointerType, event.pressure || lastPressureRef.current, activeTool);
+      } else if (painting && lastPoint.current && strokeStarted.current && releasedPoint && !hadMultiplePointers) {
+        drawLine(lastPoint.current, releasedPoint, event.pointerType, event.pressure || lastPressureRef.current, activeTool);
       }
-      if ((tool === 'brush' || tool === 'eraser') && strokeStarted.current) pushHistory();
-      if (tool === 'move' && objectChanged.current) pushHistory();
+      commitStrokeLayer();
+      if (painting && strokeStarted.current) pushHistory();
+      if (activeTool === 'move' && objectChanged.current) pushHistory();
       lastPoint.current = null;
       strokeStarted.current = false;
       fillTap.current = null;
@@ -1086,10 +1389,11 @@ export function App() {
       mouseRotate.current = null;
       gesture.current = null;
       activeRegionMaskRef.current = null;
+      activeStrokeToolRef.current = null;
       objectChanged.current = false;
       endDrawing();
     }
-    if (event.pointerType === 'touch') setBrushCursor(null);
+    if (event.pointerType === 'touch') moveBrushCursor(null);
   };
 
   const undo = async () => {
@@ -1101,6 +1405,7 @@ export function App() {
     void persistDrawing(previous).catch(() => undefined);
     refreshHistoryState();
     haptic(8);
+    playSound('whoosh');
   };
   const redo = async () => {
     await historyWorkRef.current;
@@ -1111,6 +1416,7 @@ export function App() {
     void persistDrawing(next).catch(() => undefined);
     refreshHistoryState();
     haptic([7, 25, 7]);
+    playSound('whoosh');
   };
   undoActionRef.current = () => { void undo(); };
   redoActionRef.current = () => { void redo(); };
@@ -1123,6 +1429,8 @@ export function App() {
     setPanel(null);
     pushHistory();
     haptic(10);
+    playSound('boing');
+    sparkleAt({ x: object.x, y: object.y }, color, true);
     notify('Move • resize corners • rotate the top handle or twist');
   };
 
@@ -1143,10 +1451,24 @@ export function App() {
     notify('Object removed');
   };
 
+  /** Wipe to a white page sized for how the tablet is being held. */
+  const resetToBlankPage = (backing: HTMLCanvasElement) => {
+    const size = blankPageSize();
+    if (backing.width !== size.width || backing.height !== size.height) {
+      backing.width = size.width;
+      backing.height = size.height;
+    }
+    setCanvasSize(size);
+    setZoom(1);
+    setPan({ x: 0, y: 0 });
+    setCanvasRotation(0);
+  };
+
   const clearArt = () => {
     const backing = backingRef.current;
     const context = backing?.getContext('2d');
     if (!context || !backing) return;
+    resetToBlankPage(backing);
     context.globalCompositeOperation = 'source-over';
     context.fillStyle = '#ffffff';
     context.fillRect(0, 0, backing.width, backing.height);
@@ -1195,7 +1517,8 @@ export function App() {
       const backing = backingRef.current;
       if (!backing) return;
       const longestSide = Math.max(image.naturalWidth, image.naturalHeight);
-      const scale = longestSide > 1600 ? 1600 / longestSide : longestSide < 900 ? 900 / longestSide : 1;
+      // Big enough to stay crisp on Retina tablets, small enough for fast fills.
+      const scale = longestSide > 2048 ? 2048 / longestSide : longestSide < 1600 ? 1600 / longestSide : 1;
       const padding = 28;
       const imageWidth = Math.max(1, Math.round(image.naturalWidth * scale));
       const imageHeight = Math.max(1, Math.round(image.naturalHeight * scale));
@@ -1208,10 +1531,13 @@ export function App() {
       context.globalCompositeOperation = 'source-over';
       context.fillStyle = '#fff';
       context.fillRect(0, 0, width, height);
+      context.imageSmoothingEnabled = true;
+      context.imageSmoothingQuality = 'high';
       context.drawImage(image, padding, padding, imageWidth, imageHeight);
       context.strokeStyle = '#171823';
       context.lineWidth = 10;
       context.strokeRect(padding - 5, padding - 5, imageWidth + 10, imageHeight + 10);
+      viewGesture.current = null;
       capturePageBase(backing);
       setCanvasSize({ width, height });
       objectsRef.current = [];
@@ -1250,11 +1576,33 @@ export function App() {
     setDrawingActive(false);
   };
 
-  const startNewDrawing = async (title: string) => {
-    await flushAutosave().catch(() => undefined);
+  /**
+   * Freeze the drawing on screen right now (the PNG encoder copies the pixels at
+   * call time) and save it in the background, so screens can switch instantly.
+   */
+  const saveCurrentInBackground = () => {
+    if (autosaveTimerRef.current) {
+      window.clearTimeout(autosaveTimerRef.current);
+      autosaveTimerRef.current = null;
+    }
+    const pending = pendingSaveRef.current;
+    pendingSaveRef.current = null;
+    if (pending) return persistDrawing(pending.snapshot, pending).catch(() => undefined);
+    const profile = profileRef.current;
+    const drawingId = drawingIdRef.current;
+    if (!profile || !drawingId) return Promise.resolve();
+    const identity = { profile, drawingId, title: drawingTitleRef.current, createdAt: drawingCreatedAtRef.current };
+    const art = compositeArt();
+    const frozen = snapshot();
+    return frozen.then((current) => persistDrawing(current, identity, art)).catch(() => undefined);
+  };
+
+  const startNewDrawing = (title: string) => {
+    const previousSave = saveCurrentInBackground();
     drawingIdRef.current = makeId();
     drawingTitleRef.current = title;
     drawingCreatedAtRef.current = Date.now();
+    return previousSave;
   };
 
   const refreshProfileDrawings = async (profileId: string) => {
@@ -1339,26 +1687,24 @@ export function App() {
   };
 
   const chooseBlankCanvas = () => {
-    void (async () => {
-      await startNewDrawing('Blank drawing');
-      if (sessionStarted) {
-        const backing = backingRef.current;
-        const context = backing?.getContext('2d');
-        if (context && backing) {
-          context.globalCompositeOperation = 'source-over';
-          context.fillStyle = '#ffffff';
-          context.fillRect(0, 0, backing.width, backing.height);
-          capturePageBase(backing);
-          objectsRef.current = [];
-          setObjects([]);
-          setSelectedId(null);
-          setRevision((value) => value + 1);
-        }
-      }
-      await commitCanvas('now');
-      notify(sessionStarted ? 'Fresh canvas ready' : 'Blank canvas ready');
-      beginSession();
-    })();
+    void startNewDrawing('Blank drawing');
+    const backing = backingRef.current;
+    const context = backing?.getContext('2d');
+    if (context && backing) {
+      resetToBlankPage(backing);
+      context.globalCompositeOperation = 'source-over';
+      context.fillStyle = '#ffffff';
+      context.fillRect(0, 0, backing.width, backing.height);
+      capturePageBase(backing);
+      objectsRef.current = [];
+      setObjects([]);
+      setSelectedId(null);
+      setRevision((value) => value + 1);
+    }
+    // Open the page now; the first history entry and save finish in the background.
+    void commitCanvas('now');
+    notify(sessionStarted ? 'Fresh canvas ready' : 'Blank canvas ready');
+    beginSession();
   };
 
   const chooseContinue = () => {
@@ -1369,7 +1715,8 @@ export function App() {
       refreshHistoryState();
       notify('Welcome back!');
     } else if (!drawingIdRef.current) {
-      void startNewDrawing(drawingTitleRef.current || 'Drawing').then(() => commitCanvas('now'));
+      void startNewDrawing(drawingTitleRef.current || 'Drawing');
+      void commitCanvas('now');
     }
     beginSession();
   };
@@ -1381,10 +1728,9 @@ export function App() {
   };
 
   const selectLibraryPage = (src: string, title: string) => {
-    void startNewDrawing(title).then(() => {
-      loadLibraryPage(src, title);
-      beginSession();
-    });
+    void startNewDrawing(title);
+    loadLibraryPage(src, title);
+    beginSession();
   };
 
   const openSavedDrawing = async (id: string) => {
@@ -1421,21 +1767,39 @@ export function App() {
         setProfileGateOpen(true);
         return;
       }
-      if (!drawingIdRef.current) await startNewDrawing('Drawing');
+      if (!drawingIdRef.current) void startNewDrawing('Drawing');
       if (autosaveTimerRef.current) {
         window.clearTimeout(autosaveTimerRef.current);
         autosaveTimerRef.current = null;
       }
       pendingSaveRef.current = null;
-      await historyWorkRef.current;
-      await persistDrawing(await snapshot());
-      notify(`Saved to ${profileRef.current.name}’s drawings`);
+      const name = profileRef.current.name;
+      // Freeze the picture and who it belongs to now, then celebrate straight away;
+      // the save finishes behind the confetti even if a new page is opened.
+      const identity = { profile: profileRef.current, drawingId: drawingIdRef.current!, title: drawingTitleRef.current, createdAt: drawingCreatedAtRef.current };
+      const art = compositeArt();
+      const frozen = snapshot();
+      playSound('chime');
+      setCelebration({ emoji: '⭐', label: 'Saved!' });
+      await persistDrawing(await frozen, identity, art);
+      notify(`Saved to ${name}’s drawings`);
     } catch {
+      finishAfterCelebrationRef.current = false;
+      playSound('nope');
       notify('Could not save that drawing. Try again.');
     } finally {
       setPanel(null);
     }
   };
+
+  const finishCelebration = useCallback(() => {
+    setCelebration(null);
+    if (!finishAfterCelebrationRef.current) return;
+    finishAfterCelebrationRef.current = false;
+    setPanel(null);
+    setChooserOpen(true);
+    setDrawingActive(false);
+  }, []);
 
   const downloadPng = () => {
     const output = compositeArt();
@@ -1498,14 +1862,32 @@ export function App() {
     };
   });
 
+  const palmGuardRef = useRef(palmGuardActive);
+  palmGuardRef.current = palmGuardActive;
+  const discardStrokeRef = useRef(() => {});
+  discardStrokeRef.current = () => {
+    const layer = strokeLayerRef.current;
+    layer?.getContext('2d')?.clearRect(0, 0, layer.width, layer.height);
+    strokeLayerActiveRef.current = false;
+    activeStrokeToolRef.current = null;
+    requestRender();
+  };
+
   useEffect(() => {
     const stage = canvasStage;
     if (!stage) return;
     const tracker = createTouchTapTracker();
     let ignoring = false;
 
+    const hasStylus = (event: TouchEvent) => Array.from(event.touches).some((touch) => (touch as Touch & { touchType?: string }).touchType === 'stylus');
     const onStart = (event: TouchEvent) => {
       if (ignoring) return;
+      // Pencil plus a resting palm is not a two-finger undo tap.
+      if (hasStylus(event) || palmGuardRef.current()) {
+        ignoring = true;
+        tracker.reset();
+        return;
+      }
       if (isUiTouchTarget(event.target) && tracker.maxFingers === 0) {
         ignoring = true;
         return;
@@ -1528,6 +1910,10 @@ export function App() {
       }
       const action = tracker.onEnd(event);
       if (event.touches.length > 0 || !action) return;
+      if (palmGuardRef.current()) return;
+      // Little hands often touch with two fingers by accident; no surprise undo.
+      if (kidModeRef.current) return;
+      discardStrokeRef.current();
       screenPointers.current.clear();
       viewPointerOnCanvas.current.clear();
       navigatingCanvas.current = false;
@@ -1574,7 +1960,7 @@ export function App() {
     stopDrawing: () => setDrawingActive(false),
     setDragColor,
     setMessage,
-    clearBrushCursor: () => setBrushCursor(null),
+    clearBrushCursor: () => moveBrushCursor(null),
     haptic,
     notify,
   });
@@ -1582,8 +1968,14 @@ export function App() {
   const selectedObject = objects.find((object) => object.id === selectedId) ?? null;
 
   return (
-    <main className={`app-shell${focusMode ? ' is-focus' : ''}${drawingActive ? ' is-drawing' : ''}${leftHanded ? ' is-left-handed' : ''}${stayInLines ? ' is-line-safe' : ''}${chooserOpen || profileGateOpen ? ' is-choosing' : ''}${dragColor ? ' is-color-dropping' : ''}`}>
+    <main className={`app-shell${kidMode ? ' is-kid' : ''}${focusMode ? ' is-focus' : ''}${drawingActive ? ' is-drawing' : ''}${leftHanded ? ' is-left-handed' : ''}${stayInLines ? ' is-line-safe' : ''}${chooserOpen || profileGateOpen ? ' is-choosing' : ''}${dragColor ? ' is-color-dropping' : ''}`}>
       <TopBar
+        kidMode={kidMode}
+        onGrownUpHint={() => { playSound('nope'); notify('Grown-ups: press and hold'); }}
+        onDone={() => {
+          finishAfterCelebrationRef.current = true;
+          void saveToGallery();
+        }}
         focusMode={focusMode}
         canUndo={historyState.undo}
         canRedo={historyState.redo}
@@ -1599,7 +1991,10 @@ export function App() {
       />
 
       <CanvasWorkspace
-        message={message}
+        kidMode={kidMode}
+        color={color}
+        showToast={Boolean(kidMode && kidToastFor(message))}
+        message={kidMode ? kidToastFor(message) ?? '' : message}
         stayInLines={stayInLines}
         selectedObject={selectedObject}
         canvasRotation={canvasRotation}
@@ -1633,27 +2028,30 @@ export function App() {
         fillPreviewRef={fillPreviewCanvasRef}
         fillPreviewActive={fillPreviewActive}
         tool={tool}
-        brushCursor={brushCursor}
+        brushCursorRef={brushCursorRef}
         onCanvasPointerDown={pointerDown}
         onCanvasPointerMove={pointerMove}
         onCanvasPointerUp={pointerUp}
         onCanvasPointerCancel={pointerUp}
-        onCanvasPointerEnter={(event) => { if (tool === 'brush' || tool === 'eraser') setBrushCursor(pointFromClient(event.currentTarget, event.clientX, event.clientY)); }}
-        onCanvasPointerLeave={() => { if (!pointers.current.size) setBrushCursor(null); }}
+        onCanvasPointerEnter={(event) => { if ((tool === 'brush' || tool === 'eraser') && event.pointerType !== 'touch') moveBrushCursor(pointFromClient(event.currentTarget, event.clientX, event.clientY)); }}
+        onCanvasPointerLeave={() => { if (!pointers.current.size) moveBrushCursor(null); }}
       />
 
       <ToolDock
+        kidMode={kidMode}
+        color={color}
+        canUndo={historyState.undo}
+        onUndo={() => void undo()}
         tool={tool}
         panel={panel}
         stayInLines={stayInLines}
         onBrush={() => { chooseTool('brush'); setPanel(panel === 'brush' ? null : 'brush'); }}
         onStayInLines={toggleStayInLines}
         onEraser={() => chooseTool('eraser')}
-        onFill={() => { chooseTool('fill'); notify('Tap an area, or drag a color onto it'); }}
+        onFill={() => { chooseTool('fill'); if (!kidMode) notify('Tap an area, or drag a color onto it'); }}
         onMove={() => chooseTool('move')}
         onShapes={() => setPanel(panel === 'shapes' ? null : 'shapes')}
         onStickers={() => setPanel(panel === 'stickers' ? null : 'stickers')}
-        onReset={resetPage}
       />
 
       <FloatingPanels
@@ -1687,6 +2085,28 @@ export function App() {
         onToggleFocus={() => void toggleFocusMode()}
         onToggleHanded={() => { setLeftHanded((value) => !value); haptic(8); }}
         onTolerance={setTolerance}
+        pencilOnly={pencilOnly}
+        penSeen={penSeen}
+        kidMode={kidMode}
+        soundOn={soundOn}
+        onToggleKidMode={() => {
+          setKidMode((value) => !value);
+          setPanel(null);
+          haptic(8);
+        }}
+        onToggleSound={() => {
+          const next = !soundOn;
+          setSoundEnabled(next);
+          setSoundOn(next);
+          if (next) playSound('chime');
+        }}
+        onTogglePencil={() => {
+          const next = pencilOnly ? 'off' : 'on';
+          setPencilPreference(next);
+          setPanel(null);
+          haptic(8);
+          notify(next === 'on' ? '✏️ Stylus only • fingers zoom, pan and tap-undo' : '👆 Fingers can draw again');
+        }}
       />
       {profileGateOpen && !bootReady && <div className="start-chooser profile-gate" role="status" aria-live="polite">
         <div className="start-chooser__panel">
@@ -1737,6 +2157,13 @@ export function App() {
 
       <Palette tool={tool} brushType={brushType} color={color} onBrush={selectBrush} onPalettePointerDown={startColorDrag} onCustomColor={selectColor} />
       <input ref={fileRef} className="visually-hidden" type="file" accept="image/png,image/jpeg,image/webp" onChange={(event) => { const file = event.target.files?.[0]; if (file) upload(file); event.target.value = ''; }} />
+      <SparkleLayer bursts={bursts} />
+      <Celebration
+        show={Boolean(celebration)}
+        emoji={celebration?.emoji ?? '⭐'}
+        label={celebration?.label ?? ''}
+        onDone={finishCelebration}
+      />
       {dragColor && <div className={`color-drop-orb${fillPreviewActive ? ' is-over-target' : ''}`} style={{ left: dragColor.x, top: dragColor.y, backgroundColor: dragColor.color }} />}
     </main>
   );

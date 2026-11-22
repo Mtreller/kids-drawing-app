@@ -1,9 +1,11 @@
-const CACHE = 'color-pop-v2-2026-09-13-tablet';
+const CACHE = 'color-pop-v2-2026-11-22-tablet';
 const BASE = '/kids-drawing-app/';
 const CORE = [
   BASE,
   `${BASE}manifest.webmanifest`,
   `${BASE}icon.svg`,
+  `${BASE}apple-touch-icon.png`,
+  `${BASE}icon-192.png`,
   `${BASE}drawings/paw-patrol/chase-standing-proudly.webp`,
   `${BASE}drawings/paw-patrol/everest-sitting-proudly.webp`,
   `${BASE}drawings/paw-patrol/marshall-sitting-panting.webp`,

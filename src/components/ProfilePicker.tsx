@@ -3,6 +3,8 @@ import { ToolIcon } from '../icons';
 import type { CloudStatus } from '../cloud';
 import { PROFILE_AVATARS, type Profile, type StorageKind } from '../storage';
 import { InstallHelper } from './InstallHelper';
+import { GrownUpHold } from './GrownUpHold';
+import { playSound } from '../sounds';
 
 export function ProfilePicker({
   profiles,
@@ -32,9 +34,17 @@ export function ProfilePicker({
   const [avatarIndex, setAvatarIndex] = useState(profiles.length % PROFILE_AVATARS.length);
   const avatar = PROFILE_AVATARS[avatarIndex] ?? PROFILE_AVATARS[0];
 
+  const [grownUpOpen, setGrownUpOpen] = useState(false);
+  const [hint, setHint] = useState('');
+  const showHint = () => {
+    playSound('nope');
+    setHint('Grown-ups: press and hold 🔒');
+    window.setTimeout(() => setHint(''), 2000);
+  };
+
   const submit = () => {
-    const trimmed = name.trim().slice(0, 18);
-    if (!trimmed) return;
+    // Pre-readers can't type: the picture's name is a friendly default.
+    const trimmed = (name.trim() || avatar.name).slice(0, 18);
     onCreate({ name: trimmed, color: avatar.color, emoji: avatar.emoji });
     setName('');
     setCreating(false);
@@ -51,18 +61,8 @@ export function ProfilePicker({
           </div>
         </header>
         <form className="profile-create" onSubmit={(event) => { event.preventDefault(); submit(); }}>
-          <label className="profile-create__name">
-            <span>Name</span>
-            <input
-              autoFocus
-              maxLength={18}
-              placeholder="Type a name"
-              value={name}
-              onChange={(event) => setName(event.target.value)}
-            />
-          </label>
-          <p className="profile-create__label">Pick a picture</p>
-          <div className="profile-avatar-grid" role="listbox" aria-label="Avatar">
+          <p className="profile-create__label">Tap your picture</p>
+          <div className="profile-avatar-grid profile-avatar-grid--big" role="listbox" aria-label="Avatar">
             {PROFILE_AVATARS.map((item, index) => <button
               key={`${item.emoji}-${item.color}`}
               type="button"
@@ -70,12 +70,22 @@ export function ProfilePicker({
               aria-selected={index === avatarIndex}
               className={`profile-avatar${index === avatarIndex ? ' is-selected' : ''}`}
               style={{ background: item.color }}
-              onClick={() => setAvatarIndex(index)}
+              aria-label={item.name}
+              onClick={() => { setAvatarIndex(index); playSound('sparkle'); }}
             >{item.emoji}</button>)}
           </div>
+          <label className="profile-create__name">
+            <span>Name <small>(a grown-up can type it, or skip)</small></span>
+            <input
+              maxLength={18}
+              placeholder={avatar.name}
+              value={name}
+              onChange={(event) => setName(event.target.value)}
+            />
+          </label>
           <div className="profile-create__actions">
             {profiles.length > 0 && <button type="button" className="profile-secondary" onClick={() => setCreating(false)}>Back</button>}
-            <button type="submit" className="profile-primary" disabled={!name.trim()}>Let’s draw</button>
+            <button type="submit" className="profile-primary profile-primary--big"><span aria-hidden="true">{avatar.emoji}</span> Let’s draw!</button>
           </div>
         </form>
       </> : <>
@@ -93,14 +103,14 @@ export function ProfilePicker({
               <b>{profile.name}</b>
               <small>{profile.id === activeProfileId ? 'Drawing now' : 'Tap to draw'}</small>
             </button>
-            <button
+            {grownUpOpen && <button
               type="button"
               className="profile-card__delete"
               aria-label={`Delete ${profile.name}`}
               onClick={() => {
                 if (window.confirm(`Delete ${profile.name} and their drawings?`)) onDelete(profile);
               }}
-            ><ToolIcon name="close" size={16} /></button>
+            ><ToolIcon name="close" size={16} /></button>}
           </div>)}
           <button type="button" className="profile-card profile-card--add" onClick={() => { setCreating(true); setName(''); }}>
             <span className="profile-avatar profile-avatar--large profile-avatar--add"><ToolIcon name="plus" size={28} /></span>
@@ -109,14 +119,20 @@ export function ProfilePicker({
           </button>
         </div>
       </>}
-      <InstallHelper />
-      <FamilyCloudCard
-        houseCode={houseCode}
-        houseShareUrl={houseShareUrl}
-        cloudStatus={cloudStatus}
-        storageKind={storageKind}
-        onJoinHouse={onJoinHouse}
-      />
+      {hint && <p className="kid-hint" role="status">{hint}</p>}
+      {grownUpOpen ? <>
+        <InstallHelper />
+        <FamilyCloudCard
+          houseCode={houseCode}
+          houseShareUrl={houseShareUrl}
+          cloudStatus={cloudStatus}
+          storageKind={storageKind}
+          onJoinHouse={onJoinHouse}
+        />
+        <button type="button" className="profile-secondary grown-up-done" onClick={() => setGrownUpOpen(false)}>Done</button>
+      </> : <GrownUpHold className="grown-up-link" label="Grown-ups settings" onConfirm={() => setGrownUpOpen(true)} onTapHint={showHint}>
+        <span aria-hidden="true">🔒</span> Grown-ups
+      </GrownUpHold>}
     </div>
   </div>;
 }
