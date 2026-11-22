@@ -6,8 +6,10 @@ import { VerticalRange } from './Controls';
 
 type Size = { width: number; height: number };
 
+export const KID_BRUSH_SIZES = [14, 36, 72, 140];
+
 export function CanvasWorkspace({
-  message, stayInLines, selectedObject, canvasRotation, zoom,
+  kidMode, color, showToast, message, stayInLines, selectedObject, canvasRotation, zoom,
   onRotateSelected, onDeleteSelected, onRotateCanvas, onResetCanvasRotation, onResetView,
   onWheel, onStagePointerDown, onStagePointerMove, onStagePointerUp, onStagePointerCancel,
   clusterRef, stageRef, sizeControlRef, opacityControlRef, brushSize, brushMinimum, brushMaximum, opacity, onBrushSize, onOpacity, onOpenBrush,
@@ -15,6 +17,9 @@ export function CanvasWorkspace({
   onCanvasPointerDown, onCanvasPointerMove, onCanvasPointerUp, onCanvasPointerCancel,
   onCanvasPointerEnter, onCanvasPointerLeave,
 }: {
+  kidMode: boolean;
+  color: string;
+  showToast: boolean;
   message: string;
   stayInLines: boolean;
   selectedObject: ArtObject | null;
@@ -66,8 +71,18 @@ export function CanvasWorkspace({
     setOpacityOpen(false);
   }, [drawingActive]);
 
+  const viewChanged = zoom > 1.01 || Math.abs(canvasRotation) > .01;
   return <section className="workspace" onWheel={onWheel}>
-    <div className="workspace-hud">
+    {kidMode
+      ? <div className="workspace-hud workspace-hud--kid">
+        {showToast && <div key={message} className="kid-toast" role="status" aria-live="polite">{message}</div>}
+        {selectedObject && <div className="selection-toolbar selection-toolbar--kid" aria-label="Selected sticker">
+          <button className="rotate-selection" type="button" onClick={onRotateSelected} aria-label="Turn sticker"><ToolIcon name="rotateRight" size={24} /></button>
+          <button className="delete-selection" type="button" onClick={onDeleteSelected} aria-label="Remove sticker"><span aria-hidden="true">🗑️</span></button>
+        </div>}
+        {viewChanged && <button className="kid-fit-button" type="button" onClick={() => { onResetView(); if (Math.abs(canvasRotation) > .01) onResetCanvasRotation(); }} aria-label="Show the whole page"><ToolIcon name="fit" size={26} /></button>}
+      </div>
+      : <div className="workspace-hud">
       <div className="status-pill" role="status">{message}</div>
       {stayInLines && <div className="line-mode-badge"><ToolIcon name="magic" size={16} /><span>Stay Inside Lines</span></div>}
       {selectedObject && <div className="selection-toolbar" aria-label="Selected object controls">
@@ -81,7 +96,7 @@ export function CanvasWorkspace({
         <button type="button" onClick={() => onRotateCanvas(1)} aria-label="Rotate canvas right 90 degrees"><ToolIcon name="rotateRight" size={16} /><span>90°</span></button>
         <button className="zoom-reset" type="button" onClick={onResetView} aria-label="Fit canvas to screen"><ToolIcon name="fit" size={15} />{Math.round(zoom * 100)}%</button>
       </div>
-    </div>
+    </div>}
     <div
       ref={stageRef}
       className="canvas-stage"
@@ -91,7 +106,19 @@ export function CanvasWorkspace({
       onPointerCancelCapture={onStagePointerCancel}
     >
       <div className="canvas-cluster" ref={clusterRef}>
-        <aside className={`side-controls${sizeOpen ? ' is-open' : ' is-collapsed'}`} ref={sizeControlRef} aria-label="Brush size">
+        {kidMode ? <aside className="side-controls side-controls--kid" ref={sizeControlRef} aria-label="Brush size" style={{ '--current-color': color } as CSSProperties}>
+          {[...KID_BRUSH_SIZES].reverse().map((size, index) => {
+            const nearest = KID_BRUSH_SIZES.reduce((best, option) => Math.abs(option - brushSize) < Math.abs(best - brushSize) ? option : best, KID_BRUSH_SIZES[0]);
+            return <button
+              key={size}
+              type="button"
+              className={`size-dot${nearest === size ? ' is-selected' : ''}`}
+              aria-label={['Huge brush', 'Big brush', 'Medium brush', 'Small brush'][index]}
+              aria-pressed={nearest === size}
+              onClick={() => onBrushSize(size)}
+            ><span style={{ width: [44, 31, 20, 11][index], height: [44, 31, 20, 11][index] }} /></button>;
+          })}
+        </aside> : <aside className={`side-controls${sizeOpen ? ' is-open' : ' is-collapsed'}`} ref={sizeControlRef} aria-label="Brush size">
           <button
             className="side-controls__toggle"
             type="button"
@@ -105,7 +132,7 @@ export function CanvasWorkspace({
             <VerticalRange label="Brush size" minimum={brushMinimum} maximum={brushMaximum} value={brushSize} onChange={onBrushSize} scale="log" />
             <span className="control-label">Size</span>
           </div>
-        </aside>
+        </aside>}
         <div className="canvas-wrap" style={{
           '--page-ratio': canvasSize.width / canvasSize.height,
           width: displaySize?.width,
@@ -139,7 +166,7 @@ export function CanvasWorkspace({
             aria-hidden="true"
           />}
         </div>
-        <aside className={`side-controls side-controls--right${opacityOpen ? ' is-open' : ' is-collapsed'}`} ref={opacityControlRef} aria-label="Brush opacity">
+        {!kidMode && <aside className={`side-controls side-controls--right${opacityOpen ? ' is-open' : ' is-collapsed'}`} ref={opacityControlRef} aria-label="Brush opacity">
           <button
             className="side-controls__toggle"
             type="button"
@@ -153,7 +180,7 @@ export function CanvasWorkspace({
             <VerticalRange label="Brush opacity" minimum={10} maximum={100} value={opacity * 100} onChange={(value) => onOpacity(value / 100)} />
             <span className="control-label">Opacity</span>
           </div>
-        </aside>
+        </aside>}
       </div>
     </div>
   </section>;
